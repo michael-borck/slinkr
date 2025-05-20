@@ -1,0 +1,10 @@
+<svg width="200" height="50" viewBox="0 0 200 50" xmlns="http://www.w3.org/2000/svg">
+  <image href="slinkr-color-512.png" x="0" y="0" width="50" height="50" />
+  <text x="60" y="34"
+        font-family="Poppins, sans-serif"
+        font-weight="500"
+        font-size="32"
+        fill="#2c3e50">
+    Slinkr
+  </text>
+</svg>

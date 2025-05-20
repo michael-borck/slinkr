@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Slinkr{% endblock %} - URL Utility Hub</title>
+    <title>{% block title %}Slinkr:{% endblock %} Streatch, Shrink, Share</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {# Favicon #}
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon-16.png') }}">
+    {# App icon / manifest #}
+    <link rel="apple-touch-icon" sizes="64x64" href="{{ url_for('static', filename='img/appicon-64.png') }}">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
 
     <nav class="navbar">
         <a href="{{ url_for('index') }}" class="logo">
-            <svg class="logo-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-            </svg>
+            {# Header logo #}
+            <img src="{{ url_for('static', filename='img/header-logo.svg') }}" alt="Slinkr Logo" class="logo-icon">
             Slinkr
         </a>
 
@@ -102,7 +104,7 @@
     </main>
 
     <footer class="footer">
-        <p>&copy; <span id="current-year"></span> Slinkr - URL Utility Hub. All rights reserved.</p>
+        <p>&copy; <span id="current-year"></span> Slinkr: Stretch, Shrink, Share. All rights reserved.</p>
     </footer>
 
     <script>
@@ -210,3 +212,5 @@
     </script>
     {% block scripts %}{% endblock %} </body>
 </html>
+
+
