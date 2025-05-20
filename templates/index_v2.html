@@ -1,0 +1,369 @@
+i{% extends "base.html" %} {# Extends the updated base.html #}
+
+{% block title %}Slinkr Hub{% endblock %}
+
+{% block content %}
+<div class="container"> {# Main content container #}
+    <div class="hero">
+        <h1>Slinkr URL Utility Hub</h1>
+        <p>Manage, transform and analyze your URLs with our powerful suite of tools.</p>
+    </div>
+
+    {# --- URL Input Area --- #}
+    <div class="url-input-section">
+        <div class="input-group">
+            <label for="urlInput">Enter URL or Slinkr Code:</label>
+            {# Use urlInput ID for consistency with JS #}
+            <input type="text" id="urlInput" name="url" placeholder="https://example.com or {{ base_url }}/abc123 or abc123" required autocomplete="off">
+        </div>
+    </div>
+
+    {# --- Action Selection Form --- #}
+    {# Use a form element to group inputs and button #}
+    <form id="slinkrForm">
+        <div class="card-grid">
+            {# Card 1: Shorten URL #}
+            <label class="card card-active" for="action-shorten"> {# Label wraps card for clickability #}
+                <input type="radio" name="action" id="action-shorten" value="shorten" checked>
+                <div class="checkbox-mark"></div> {# Visual indicator #}
+                <div class="card-icon">
+                    {# SVG for Shorten #}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 10h4a2 2 0 0 1 0 4h-4"></path>
+                        <path d="M12 4H8a4 4 0 0 0-4 4v8a4 4 0 0 0 4 4h4"></path>
+                        <path d="M16 15l-4-4 4-4"></path>
+                    </svg>
+                </div>
+                <h3>Shorten URL</h3>
+                <p>Create a compact, easy-to-share link that redirects to your original URL.</p>
+            </label>
+
+            {# Card 2: Expand URL #}
+            <label class="card" for="action-expand">
+                <input type="radio" name="action" id="action-expand" value="expand">
+                <div class="checkbox-mark"></div>
+                <div class="card-icon">
+                    {# SVG for Expand #}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 14l-4-4 4-4"></path>
+                        <path d="M16 4h-4a4 4 0 0 0-4 4v8a4 4 0 0 0 4 4h4"></path>
+                        <path d="M16 10h4a2 2 0 0 1 0 4h-4"></path>
+                    </svg>
+                </div>
+                <h3>Expand Slinkr URL</h3>
+                <p>Reveal the original destination of a shortened Slinkr URL.</p>
+            </label>
+
+            {# Card 3: Generate QR #}
+            <label class="card" for="action-qr">
+                <input type="radio" name="action" id="action-qr" value="qr">
+                <div class="checkbox-mark"></div>
+                <div class="card-icon">
+                     {# SVG for QR Code #}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                </div>
+                <h3>Generate QR Code</h3>
+                <p>Create a scannable QR code for your URL. Optionally add a logo.</p> {# Updated description #}
+            </label>
+
+            {# Card 4: Check Status #}
+            <label class="card" for="action-check">
+                <input type="radio" name="action" id="action-check" value="check">
+                <div class="checkbox-mark"></div>
+                <div class="card-icon">
+                     {# SVG for Check Status #}
+                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                         <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                    </svg>
+                </div>
+                <h3>Check Link Status</h3>
+                <p>Verify if a URL is active, redirected, or broken with detailed status information.</p>
+            </label>
+        </div>
+
+        {# --- Optional Logo Upload (Conditional) --- #}
+        <div class="input-group hidden" id="logoUploadSection"> {# Use input-group for consistency #}
+             <label for="logoFile">Optional Logo for QR (PNG, JPG, GIF):</label>
+             <input type="file" id="logoFile" name="logo" accept=".png,.jpg,.jpeg,.gif">
+             <p style="font-size: 0.8rem; color: var(--gray-medium); margin-top: 0.25rem;">Small logos work best. Will be placed in the center.</p>
+        </div>
+
+        {# --- Submit Button --- #}
+        <button type="submit" id="submitButton" class="btn btn-center">
+             {# SVG Arrow Icon #}
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14"></path>
+                <path d="m12 5 7 7-7 7"></path>
+            </svg>
+            Perform Action
+        </button>
+    </form>
+
+    {# --- Spinner (Hidden by default) --- #}
+    <div id="spinner" class="spinner"></div>
+
+    {# --- Results Area (Hidden by default) --- #}
+    <div id="resultsContainer" class="results-container" style="display: none;">
+        {# Results will be dynamically inserted here by JavaScript #}
+    </div>
+
+    {# --- Verification Notice --- #}
+    {% if current_user.is_authenticated and not current_user.is_verified and not current_user.is_admin %}
+    <div class="result-box warning" style="margin-top: 2rem;"> {# Use result-box styling #}
+        <p>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 0.5rem;">
+                <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            Your account is pending verification. Some features (URL shortening, link checking) require admin approval.
+        </p>
+    </div>
+    {% endif %}
+
+</div> {# End Container #}
+{% endblock %}
+
+{% block scripts %}
+{# --- Page Specific JavaScript --- #}
+<script>
+    // --- DOM Elements ---
+    const form = document.getElementById('slinkrForm');
+    const urlInput = document.getElementById('urlInput');
+    const actionCards = document.querySelectorAll('.card');
+    const actionRadios = document.querySelectorAll('input[name="action"]');
+    const logoUploadSection = document.getElementById('logoUploadSection');
+    const logoFileInput = document.getElementById('logoFile');
+    const submitButton = document.getElementById('submitButton');
+    const spinner = document.getElementById('spinner');
+    const resultsContainer = document.getElementById('resultsContainer'); // Main container for all results/errors
+
+    // --- Event Listeners ---
+
+    // Handle card selection visual state
+    actionRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            // Remove active class from all cards
+            actionCards.forEach(card => card.classList.remove('card-active'));
+            // Add active class to the parent label of the checked radio
+            if (radio.checked) {
+                radio.closest('.card').classList.add('card-active');
+            }
+            // Show/hide logo upload section
+            const selectedAction = document.querySelector('input[name="action"]:checked').value;
+            if (selectedAction === 'qr') {
+                logoUploadSection.classList.remove('hidden');
+            } else {
+                logoUploadSection.classList.add('hidden');
+            }
+            // Clear results when action changes
+            hideResults();
+        });
+    });
+
+    // Form submission handler
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault(); // Prevent default form submission
+        hideResults(); // Clear previous results/errors
+        showSpinner('spinner', true);
+        submitButton.disabled = true; // Prevent double-clicks
+
+        const selectedAction = document.querySelector('input[name="action"]:checked').value;
+        const urlValue = urlInput.value;
+        let endpoint = '';
+        let requestOptions = {
+            method: 'POST',
+            headers: {},
+            // Body will be set based on action
+        };
+        let isFormData = false;
+
+        // --- Prepare API Request ---
+        switch (selectedAction) {
+            case 'shorten':
+                endpoint = "{{ url_for('api_shorten') }}";
+                requestOptions.body = JSON.stringify({ url: urlValue });
+                requestOptions.headers['Content-Type'] = 'application/json';
+                break;
+            case 'expand':
+                endpoint = "{{ url_for('api_expand') }}";
+                requestOptions.body = JSON.stringify({ short_url: urlValue });
+                requestOptions.headers['Content-Type'] = 'application/json';
+                break;
+            case 'qr':
+                endpoint = "{{ url_for('api_qr') }}";
+                const formData = new FormData(); // Use FormData for file upload
+                formData.append('url', urlValue);
+                if (logoFileInput.files.length > 0) {
+                    formData.append('logo', logoFileInput.files[0]);
+                }
+                requestOptions.body = formData; // Assign FormData directly
+                isFormData = true;
+                // NOTE: Do NOT set Content-Type header for FormData; browser handles it
+                break;
+            case 'check':
+                endpoint = "{{ url_for('api_check') }}";
+                requestOptions.body = JSON.stringify({ url: urlValue });
+                requestOptions.headers['Content-Type'] = 'application/json';
+                break;
+            default:
+                showSpinner('spinner', false);
+                submitButton.disabled = false;
+                displayError('Invalid action selected.'); // Use displayError helper
+                return;
+        }
+
+        // --- Make API Call ---
+        try {
+            const response = await fetch(endpoint, requestOptions);
+            const data = await response.json(); // Assume API always returns JSON
+
+            showSpinner('spinner', false);
+            submitButton.disabled = false;
+            resultsContainer.style.display = 'block'; // Show results area
+
+            if (response.ok) {
+                // Display result based on action
+                switch (selectedAction) {
+                    case 'shorten':
+                        displayShortenResult(data.short_url);
+                        break;
+                    case 'expand':
+                        displayExpandResult(data.original_url);
+                        break;
+                    case 'qr':
+                        displayQrResult(data.qr_image_data);
+                        break;
+                    case 'check':
+                        displayCheckResult(data); // Use existing helper structure
+                        break;
+                }
+            } else {
+                // Handle API errors (4xx, 5xx) using the JSON response
+                let errorMsg = `Error ${response.status}: ${data.error || response.statusText || 'Unknown error'}`;
+                 if (response.status === 403) { // Forbidden
+                     errorMsg = `Error: ${data.error || 'Access denied. Your account might need verification.'}`;
+                 } else if (response.status === 429) { // Rate limit
+                     errorMsg = `Error: ${data.error || 'Rate limit exceeded. Please try again later.'}`;
+                 }
+                 displayError(errorMsg); // Display error in the results container
+            }
+
+        } catch (error) {
+            // Handle network errors, etc.
+            showSpinner('spinner', false);
+            submitButton.disabled = false;
+            resultsContainer.style.display = 'block'; // Show results area
+            console.error('Fetch Error:', error);
+            displayError('An unexpected network error occurred. Please check your connection and try again.');
+        }
+    });
+
+    // --- Helper Functions for Displaying Results ---
+
+    function hideResults() {
+        resultsContainer.innerHTML = ''; // Clear content
+        resultsContainer.style.display = 'none'; // Hide container
+    }
+
+    function displayError(message) {
+        // Use the showMessage function from base.html but target resultsContainer
+        const errorDiv = document.createElement('div');
+        resultsContainer.appendChild(errorDiv); // Add div to container first
+        showMessage(errorDiv, message, 'error'); // Pass the element itself
+    }
+
+    function displayShortenResult(shortUrl) {
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'result-box success'; // Add base class and type
+        resultDiv.innerHTML = `
+            <h3>Your Short Link:</h3>
+            <div class="copy-button-wrapper">
+                <a id="shortUrlLink" href="${shortUrl}" target="_blank" class="short-url-link">${shortUrl}</a>
+                <button id="copyButtonShort" class="copy-button btn btn-secondary btn-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Copy
+                </button>
+            </div>
+        `;
+        resultsContainer.appendChild(resultDiv);
+        // Re-attach copy functionality
+        const copyButton = resultDiv.querySelector('#copyButtonShort');
+        copyButton.dataset.originalContent = copyButton.innerHTML; // Store original content for reset
+        copyButton.onclick = () => copyToClipboard(shortUrl, copyButton);
+    }
+
+    function displayExpandResult(originalUrl) {
+         const resultDiv = document.createElement('div');
+         resultDiv.className = 'result-box info'; // Use info style for expand
+         let displayUrl = originalUrl;
+         // Prepend http:// if no scheme exists for clickable link
+         if (displayUrl && !displayUrl.match(/^https?:\/\//)) {
+             displayUrl = 'http://' + displayUrl;
+         }
+         resultDiv.innerHTML = `
+            <h3>Original Long URL:</h3>
+            <a href="${displayUrl || '#'}" target="_blank">${originalUrl || 'N/A'}</a>
+         `;
+         resultsContainer.appendChild(resultDiv);
+    }
+
+    function displayQrResult(qrImageData) {
+         const resultDiv = document.createElement('div');
+         resultDiv.className = 'result-box info text-center'; // Center content
+         resultDiv.innerHTML = `
+            <h3>Your QR Code:</h3>
+            <img src="${qrImageData}" alt="Generated QR Code" class="qr-code-image">
+            <a href="${qrImageData}" download="slinkr_qr_code.png" class="btn btn-secondary" style="margin-top: 1rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download QR Code
+            </a>
+         `;
+         resultsContainer.appendChild(resultDiv);
+    }
+
+    function displayCheckResult(data) {
+        // Reuses the showMessage concept but builds specific HTML
+        const resultDiv = document.createElement('div');
+        let resultClass = 'info'; // Default class
+        let innerHTML = `<h3>Link Status Result:</h3>`;
+
+        if (data.error) {
+            // Handle errors reported by the check endpoint
+            resultClass = 'error';
+            innerHTML += `<div class="result-item"><strong>${data.status_indicator || '❓'} Error:</strong> ${data.error}</div>`;
+        } else {
+            // Determine class based on status indicator
+            if (data.status_indicator === "✅") resultClass = 'success';
+            else if (["❌", "⚠️", "🔌", "⏱️", "🔒❌"].includes(data.status_indicator)) resultClass = 'error';
+            else if (data.status_indicator === "➡️") resultClass = 'info'; // Keep redirects as info
+
+            // Display successful check result
+            innerHTML += `<div class="result-item"><strong>Status:</strong> ${data.status_indicator || ''} ${data.status_code || ''} ${data.status_text || ''}</div>`;
+            innerHTML += `<div class="result-item"><strong>Final URL:</strong> <a href="${data.final_url}" target="_blank">${data.final_url}</a></div>`;
+        }
+
+        resultDiv.className = `result-box ${resultClass}`;
+        resultDiv.innerHTML = innerHTML;
+        resultsContainer.appendChild(resultDiv);
+    }
+
+
+    // --- Initial State Setup ---
+    // Ensure logo upload is hidden if QR not selected initially
+    if (!document.querySelector('input[name="action"][value="qr"]:checked')) {
+        logoUploadSection.classList.add('hidden');
+    }
+    // Ensure first card is marked active if checked initially
+     const initialChecked = document.querySelector('input[name="action"]:checked');
+     if (initialChecked) {
+         initialChecked.closest('.card').classList.add('card-active');
+     }
+
+
+</script>
+{% endblock %}
+

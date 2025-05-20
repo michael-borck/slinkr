@@ -1,0 +1,22 @@
+# Flask Framework and Extensions
+Flask>=2.0 # Or specify a more recent version if needed
+Flask-Login>=0.6
+Flask-Bcrypt>=1.0
+Flask-Limiter>=2.0 # Or specify a more recent version
+
+# Database
+tinydb>=4.0
+
+# HTTP Requests
+requests>=2.25
+
+# QR Code Generation (includes Pillow)
+qrcode[pil]>=7.0 # Using the 'pil' extra installs Pillow automatically
+
+# Utility
+shortuuid>=1.0
+
+# Note: Pillow is installed as a dependency of qrcode[pil]
+# You could list Pillow explicitly if desired, but it's usually handled by the extra.
+# Pillow>=9.0
+

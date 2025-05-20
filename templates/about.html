@@ -1,0 +1,163 @@
+{% extends "base.html" %} {# Extends the base template with navbar, footer, and CSS #}
+
+{% block title %}About Slinkr{% endblock %} {# Sets the page title #}
+
+{% block content %}
+{# --- Main Content Container --- #}
+<div class="container">
+
+    {# --- Page Header --- #}
+    <div class="page-header">
+        <h1>About Slinkr</h1>
+        <p>Learn about our mission, team, and the technology behind our URL utility platform</p>
+    </div>
+
+    {# --- Our Story Section --- #}
+    <section class="about-section">
+        <div class="about-content">
+            <h2>Our Story</h2>
+            {# Keep the content, but adjust wording if needed for your specific project #}
+            <p>Slinkr was created as a simple, efficient tool for managing and utilizing URLs. We recognized the need for a straightforward hub that combines common tasks like shortening links, generating QR codes, and checking link status without unnecessary complexity.</p>
+            <p>Built with Python (Flask) and modern web technologies, Slinkr aims to provide a clean, fast, and user-friendly experience for everyday URL tasks. It started as a demonstration project and continues to evolve based on core utility needs.</p>
+            <p>Our focus is on providing essential features reliably, with an emphasis on ease of use and clear functionality.</p>
+        </div>
+        <div class="about-image">
+            {# Placeholder Image - Replace with a relevant image later #}
+            <img src="https://placehold.co/600x400/10b981/FFFFFF?text=Slinkr+Concept" alt="Slinkr concept or team working" />
+        </div>
+    </section>
+
+    {# --- Features Section --- #}
+    <section class="features"> {# Keep the section wrapper if desired #}
+        <div class="features-header">
+            <h2>Core Features</h2>
+            <p>The essential tools Slinkr provides</p>
+        </div>
+
+        {# Use card-grid for layout like the index page #}
+        <div class="card-grid">
+
+            {# Feature: URL Shortener - Use "card" class #}
+            <div class="card"> {# Changed from feature-card to card #}
+                <div class="card-icon"> {# Changed from feature-icon to card-icon #}
+                    {# SVG for Shorten #}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 10h4a2 2 0 0 1 0 4h-4"></path>
+                        <path d="M12 4H8a4 4 0 0 0-4 4v8a4 4 0 0 0 4 4h4"></path>
+                        <path d="M16 15l-4-4 4-4"></path>
+                    </svg>
+                </div>
+                <h3>URL Shortener</h3>
+                <p>Create short, memorable links from long URLs. Easy to share, easy to remember. (Requires verified account)</p>
+            </div>
+
+            {# Feature: URL Expander - Use "card" class #}
+            <div class="card"> {# Changed from feature-card to card #}
+                <div class="card-icon"> {# Changed from feature-icon to card-icon #}
+                     {# SVG for Expand #}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 14l-4-4 4-4"></path>
+                        <path d="M16 4h-4a4 4 0 0 0-4 4v8a4 4 0 0 0 4 4h4"></path>
+                        <path d="M16 10h4a2 2 0 0 1 0 4h-4"></path>
+                    </svg>
+                </div>
+                <h3>URL Expander</h3>
+                <p>Find out where a Slinkr short URL leads before you click it.</p>
+            </div>
+
+            {# Feature: QR Code Generator - Use "card" class #}
+            <div class="card"> {# Changed from feature-card to card #}
+                <div class="card-icon"> {# Changed from feature-icon to card-icon #}
+                    {# SVG for QR Code #}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                </div>
+                <h3>QR Code Generator</h3>
+                <p>Generate standard QR codes for any URL, with an option to embed your own logo.</p>
+            </div>
+
+            {# Feature: Link Checker - Use "card" class #}
+            <div class="card"> {# Changed from feature-card to card #}
+                <div class="card-icon"> {# Changed from feature-icon to card-icon #}
+                    {# SVG for Check Status #}
+                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                         <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                    </svg>
+                </div>
+                <h3>Link Checker</h3>
+                <p>Quickly check the status and reachability of any web link. (Requires verified account)</p>
+            </div>
+
+             {# Feature: User System - Use "card" class #}
+            <div class="card"> {# Changed from feature-card to card #}
+                <div class="card-icon"> {# Changed from feature-icon to card-icon #}
+                     {# SVG for Users #}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                         <circle cx="9" cy="7" r="4"></circle>
+                         <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                         <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                </div>
+                <h3>User Accounts & Verification</h3>
+                <p>Register an account to use protected features. Admins can verify users for full access.</p>
+            </div>
+
+             {# Feature: Simple Tech - Use "card" class #}
+            <div class="card"> {# Changed from feature-card to card #}
+                <div class="card-icon"> {# Changed from feature-icon to card-icon #}
+                    {# SVG for Code/Tech #}
+                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="16 18 22 12 16 6"></polyline>
+                        <polyline points="8 6 2 12 8 18"></polyline>
+                    </svg>
+                </div>
+                <h3>Simple & Lightweight</h3>
+                <p>Built with Flask and TinyDB for a fast, lightweight experience without heavy dependencies.</p>
+            </div>
+        </div> {# End card-grid #}
+    </section>
+
+    {# --- Optional Team Section (Commented out - adapt if you have a team) --- #}
+    {#
+    <section class="team">
+        <div class="team-header">
+            <h2>Meet Our Team</h2>
+            <p>The people behind Slinkr</p>
+        </div>
+        <div class="team-grid">
+            <div class="team-card">
+                <div class="team-image">
+                    <img src="https://placehold.co/250x250/059669/FFFFFF?text=Team+Member" alt="Team member photo" />
+                </div>
+                <div class="team-info">
+                    <h3>Your Name</h3>
+                    <p>Role (e.g., Developer)</p>
+                    <div class="social-links">
+                        <a href="#" class="social-icon" aria-label="LinkedIn"> L </a>
+                        <a href="#" class="social-icon" aria-label="GitHub"> G </a>
+                    </div>
+                </div>
+            </div>
+            </div>
+    </section>
+    #}
+
+    {# --- Call to Action Section --- #}
+    <section class="cta">
+        <h2>Ready to Simplify Your Links?</h2>
+        <p>Slinkr provides the essential tools you need in one convenient hub. Register for free to get started.</p>
+        {# Link to the registration page #}
+        <a href="{{ url_for('register') }}" class="btn">Get Started for Free</a>
+    </section>
+
+</div> {# --- End Container --- #}
+{% endblock %}
+
+{% block scripts %}
+{# Add any page-specific JavaScript here if needed #}
+{% endblock %}

@@ -1,0 +1,919 @@
+/* static/css/style.css */
+
+/* --- CSS Variables --- */
+:root {
+  --primary: #10b981; /* Emerald 500 */
+  --primary-dark: #059669; /* Emerald 600 */
+  --secondary: #0f766e; /* Teal 700 */
+  --light: #f9fafb; /* Gray 50 */
+  --dark: #1f2937; /* Gray 800 */
+  --gray-medium: #6b7280; /* Gray 500 */
+  --gray-light: #d1d5db; /* Gray 300 */
+  --gray-lighter: #f3f4f6; /* Gray 100 */
+  --shadow: rgba(0, 0, 0, 0.08); /* Adjusted shadow */
+  --shadow-hover: rgba(0, 0, 0, 0.12);
+  --error-bg: #fee2e2; /* Red 100 */
+  --error-border: #fca5a5; /* Red 300 */
+  --error-text: #b91c1c; /* Red 700 */
+  --success-bg: #d1fae5; /* Emerald 100 */
+  --success-border: #6ee7b7; /* Emerald 300 */
+  --success-text: #065f46; /* Emerald 800 */
+  --info-bg: #dbeafe; /* Blue 100 */
+  --info-border: #93c5fd; /* Blue 300 */
+  --info-text: #1e40af; /* Blue 800 */
+  --warning-bg: #fef3c7; /* Amber 100 */
+  --warning-border: #fcd34d; /* Amber 300 */
+  --warning-text: #b45309; /* Amber 700 */
+}
+
+/* --- Global Styles --- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  background-color: var(--gray-lighter);
+  color: var(--dark);
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+main {
+  flex: 1 0 auto; /* Push footer down */
+}
+
+/* --- Navbar --- */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 5%; /* Slightly reduced padding */
+  background-color: white;
+  box-shadow: 0 2px 4px var(--shadow);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 1.5rem;
+}
+
+.logo-icon {
+  margin-right: 0.5rem;
+  /* Ensure SVG size is controlled */
+  width: 24px;
+  height: 24px;
+  stroke-width: 2;
+}
+
+.nav-links {
+  display: none; /* Hidden on mobile by default */
+  gap: 1.5rem; /* Reduced gap */
+}
+
+@media (min-width: 768px) {
+  .nav-links {
+    display: flex; /* Show on medium screens and up */
+  }
+  .mobile-menu-button {
+    display: none; /* Hide mobile button on larger screens */
+  }
+}
+
+.nav-links a {
+  text-decoration: none;
+  color: var(--dark);
+  font-weight: 500;
+  padding: 0.5rem 0; /* Add padding for larger click area */
+  transition: color 0.2s;
+  position: relative; /* For potential active state indicator */
+}
+
+.nav-links a:hover {
+  color: var(--primary);
+}
+
+.nav-links a.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* Mobile Menu Styles */
+.mobile-menu {
+  display: none; /* Hidden by default */
+  background-color: white;
+  position: absolute;
+  top: 100%; /* Position below navbar */
+  left: 0;
+  right: 0;
+  box-shadow: 0 4px 6px var(--shadow);
+  padding: 1rem 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.mobile-menu.active {
+  display: block; /* Show when active */
+}
+
+.mobile-menu a {
+  display: block;
+  padding: 0.75rem 5%;
+  text-decoration: none;
+  color: var(--dark);
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+.mobile-menu a:hover {
+  background-color: var(--gray-lighter);
+  color: var(--primary);
+}
+.mobile-menu a.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+.mobile-menu .auth-links-mobile {
+  padding: 1rem 5% 0.5rem;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 0.5rem;
+}
+.mobile-menu .auth-links-mobile a {
+  padding: 0.5rem 0; /* Adjust padding */
+}
+.mobile-menu .auth-links-mobile .login {
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+}
+.mobile-menu .auth-links-mobile .register {
+  color: var(--primary);
+  font-weight: 600;
+}
+.mobile-menu .user-info-mobile {
+  padding: 0.75rem 5%;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 0.5rem;
+  color: var(--gray-medium);
+  font-size: 0.9rem;
+}
+.mobile-menu .user-info-mobile span {
+  display: block;
+}
+.mobile-menu .user-info-mobile .username {
+  font-weight: 600;
+  color: var(--dark);
+}
+.mobile-menu .user-info-mobile .logout-link {
+  color: var(--primary);
+  font-weight: 500;
+  margin-top: 0.5rem;
+}
+.mobile-menu .pending-verification-mobile {
+  font-size: 0.8rem;
+  color: var(--warning-text);
+  background-color: var(--warning-bg);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  display: inline-block;
+  margin-top: 0.25rem;
+}
+
+/* Auth Links (Desktop) */
+.auth-links {
+  display: none; /* Hidden on mobile by default */
+  gap: 0.8rem; /* Reduced gap */
+  align-items: center;
+}
+@media (min-width: 768px) {
+  .auth-links {
+    display: flex; /* Show on medium screens and up */
+  }
+}
+
+.auth-links .user-info {
+  color: var(--gray-medium);
+  font-size: 0.9rem;
+  margin-right: 0.5rem;
+}
+.auth-links .user-info .pending-verification {
+  font-size: 0.8rem;
+  color: var(--warning-text);
+  background-color: var(--warning-bg);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  margin-left: 0.5rem;
+}
+
+.auth-links a,
+.auth-links button {
+  /* Style buttons like links */
+  text-decoration: none;
+  padding: 0.4rem 0.8rem; /* Adjusted padding */
+  border-radius: 0.375rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  font-size: 0.9rem; /* Slightly smaller font */
+  cursor: pointer;
+  border: 1px solid transparent; /* Base border */
+  background: none; /* Reset button background */
+  color: inherit; /* Inherit color for buttons */
+  font-family: inherit; /* Inherit font for buttons */
+}
+
+.auth-links .login {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.auth-links .login:hover {
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+.auth-links .register {
+  background-color: var(--primary);
+  color: white;
+  border-color: transparent;
+}
+.auth-links .register:hover {
+  background-color: var(--primary-dark);
+}
+
+.auth-links .logout {
+  /* Style logout like login */
+  color: var(--secondary);
+  border-color: var(--secondary);
+}
+.auth-links .logout:hover {
+  background-color: rgba(15, 118, 110, 0.1); /* Teal hover */
+}
+
+/* Mobile Menu Button */
+.mobile-menu-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+}
+.mobile-menu-button svg {
+  width: 24px;
+  height: 24px;
+  color: var(--dark);
+}
+
+/* --- Container & General Layout --- */
+.container {
+  max-width: 900px; /* Adjusted max width */
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.hero h1 {
+  color: var(--secondary);
+  font-size: 2.2rem; /* Adjusted size */
+  margin-bottom: 0.8rem; /* Adjusted margin */
+  font-weight: 700;
+}
+
+.hero p {
+  color: var(--gray-medium);
+  max-width: 600px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+}
+
+/* --- URL Input Section --- */
+.url-input-section {
+  /* Renamed for clarity */
+  background-color: white;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px var(--shadow);
+  margin-bottom: 2rem;
+}
+
+.input-group {
+  margin-bottom: 1rem; /* Reduced margin */
+}
+
+.input-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--dark);
+}
+
+.input-group input[type="text"],
+.input-group input[type="url"],
+.input-group input[type="email"],
+.input-group input[type="password"],
+.input-group input[type="file"] {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--gray-light);
+  border-radius: 0.375rem;
+  font-size: 1rem;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+  background-color: #fff; /* Ensure background is white */
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+/* Specific style for file input button */
+.input-group input[type="file"] {
+  padding: 0.3rem; /* Adjust padding for file input */
+  cursor: pointer;
+}
+.input-group input[type="file"]::file-selector-button {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-right: 1rem;
+}
+.input-group input[type="file"]::file-selector-button:hover {
+  background-color: var(--primary-dark);
+}
+
+/* --- Action Card Grid --- */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(220px, 1fr)
+  ); /* Adjusted minmax */
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.card {
+  background-color: white;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px var(--shadow);
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s,
+    border-color 0.2s;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+  border: 2px solid transparent; /* Start with transparent border */
+}
+
+.card:hover {
+  transform: translateY(-4px); /* Slightly less lift */
+  box-shadow: 0 8px 12px var(--shadow-hover); /* Adjusted hover shadow */
+}
+
+.card.card-active {
+  border-color: var(--primary);
+  box-shadow: 0 6px 10px var(--shadow); /* Active shadow */
+}
+
+/* Hide the actual radio button */
+.card input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.card-icon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 45px; /* Slightly smaller */
+  height: 45px;
+  background-color: rgba(16, 185, 129, 0.1);
+  border-radius: 50%;
+  margin-bottom: 1rem;
+}
+
+.card-icon svg {
+  width: 22px; /* Slightly smaller */
+  height: 22px;
+  color: var(--primary);
+}
+
+.card h3 {
+  margin-bottom: 0.5rem;
+  color: var(--dark);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.card p {
+  color: var(--gray-medium);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* Custom radio button appearance */
+.checkbox-mark {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--gray-light);
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: white;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.card.card-active .checkbox-mark {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Checkmark inside the circle */
+.card.card-active .checkbox-mark::after {
+  content: "";
+  width: 5px; /* Adjusted size */
+  height: 9px;
+  border-right: 2px solid white;
+  border-bottom: 2px solid white;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+/* --- Buttons --- */
+.btn {
+  display: inline-flex; /* Use flex for icon alignment */
+  align-items: center;
+  justify-content: center;
+  background-color: var(--primary);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  text-align: center;
+  border: none;
+  cursor: pointer;
+  transition:
+    background-color 0.2s,
+    box-shadow 0.2s;
+  font-size: 1rem;
+  line-height: 1.25; /* Ensure consistent line height */
+}
+
+.btn:hover {
+  background-color: var(--primary-dark);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn:disabled {
+  background-color: #9ca3af; /* Gray 400 */
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-center {
+  display: flex; /* Use flex for centering */
+  margin: 0 auto;
+  max-width: 250px;
+}
+
+.btn svg {
+  margin-right: 0.5rem;
+  width: 16px; /* Explicit size */
+  height: 16px;
+}
+
+/* Secondary button style */
+.btn-secondary {
+  background-color: #e5e7eb; /* Gray 200 */
+  color: var(--dark);
+  border: 1px solid var(--gray-light);
+}
+.btn-secondary:hover {
+  background-color: #d1d5db; /* Gray 300 */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+.btn-secondary:disabled {
+  background-color: #e5e7eb;
+  color: #9ca3af;
+  border-color: #d1d5db;
+}
+
+/* Small button variant */
+.btn-sm {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.875rem;
+}
+.btn-sm svg {
+  width: 14px;
+  height: 14px;
+  margin-right: 0.3rem;
+}
+
+/* --- Results Area --- */
+.results-container {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background-color: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px var(--shadow);
+}
+
+.result-box {
+  padding: 1rem;
+  border: 1px solid var(--gray-light);
+  border-radius: 0.375rem;
+  margin-bottom: 1rem; /* Space between multiple results if needed */
+  word-wrap: break-word; /* Prevent long URLs from overflowing */
+}
+.result-box:last-child {
+  margin-bottom: 0;
+}
+
+.result-box h3 {
+  /* Title for each result section */
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--dark);
+}
+
+.result-box.success {
+  background-color: var(--success-bg);
+  border-color: var(--success-border);
+  color: var(--success-text);
+}
+.result-box.error {
+  background-color: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error-text);
+}
+.result-box.info {
+  background-color: var(--info-bg);
+  border-color: var(--info-border);
+  color: var(--info-text);
+}
+.result-box.warning {
+  background-color: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+}
+
+/* Link styling within results */
+.result-box a {
+  color: var(--primary);
+  text-decoration: underline;
+  font-weight: 500;
+}
+.result-box a:hover {
+  color: var(--primary-dark);
+}
+.result-box.error a {
+  color: var(--error-text);
+  font-weight: 600;
+} /* Make error links stand out */
+
+/* Specific result item styling */
+.result-item {
+  /* For key-value pairs like status */
+  margin-bottom: 0.5rem;
+}
+.result-item strong {
+  color: var(--dark);
+  margin-right: 0.5rem;
+}
+
+/* QR Code Image */
+.qr-code-image {
+  display: block;
+  max-width: 250px; /* Limit QR size */
+  height: auto;
+  margin: 1rem auto; /* Center QR code */
+  border: 1px solid var(--gray-light);
+  border-radius: 0.375rem;
+  background-color: white; /* Ensure white background behind QR */
+  padding: 5px; /* Small padding around QR */
+}
+
+/* Copy Button within results */
+.copy-button-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.5rem; /* Add space above copy button if needed */
+}
+.copy-button-wrapper .short-url-link {
+  flex-grow: 1; /* Allow link to take available space */
+  font-family: "Courier New", Courier, monospace; /* Monospace for URL */
+  font-size: 0.95rem;
+}
+
+/* --- Footer --- */
+.footer {
+  text-align: center;
+  padding: 2rem 1rem;
+  margin-top: 3rem;
+  color: var(--gray-medium);
+  border-top: 1px solid #e5e7eb;
+  background-color: white; /* Match navbar background */
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+/* --- Spinner --- */
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-left-color: var(--primary); /* Use primary color */
+  animation: spin 1s ease infinite;
+  margin: 20px auto; /* Center spinner */
+  display: none; /* Hidden by default */
+}
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Flash Messages --- */
+.flash-messages-container {
+  max-width: 900px; /* Match container width */
+  margin: 0 auto 1.5rem auto; /* Centered, with bottom margin */
+  padding: 0 1rem; /* Match container padding */
+}
+.flash-message {
+  padding: 0.8rem 1.2rem;
+  border-radius: 0.375rem;
+  margin-bottom: 1rem;
+  border: 1px solid transparent;
+  font-size: 0.95rem;
+}
+.flash-message:last-child {
+  margin-bottom: 0;
+}
+
+.flash-success {
+  background-color: var(--success-bg);
+  border-color: var(--success-border);
+  color: var(--success-text);
+}
+.flash-danger {
+  background-color: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error-text);
+}
+.flash-warning {
+  background-color: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+}
+.flash-info {
+  background-color: var(--info-bg);
+  border-color: var(--info-border);
+  color: var(--info-text);
+}
+
+/* --- Login/Register/Admin Pages Specific Styles --- */
+.auth-card {
+  /* Style for login/register cards */
+  max-width: 450px;
+  margin: 2rem auto;
+  background-color: white;
+  border-radius: 0.5rem;
+  padding: 2rem;
+  box-shadow: 0 4px 10px var(--shadow);
+}
+.auth-card h1 {
+  text-align: center;
+  color: var(--secondary);
+  margin-bottom: 1.5rem;
+  font-size: 1.8rem;
+}
+.auth-card .form-group {
+  margin-bottom: 1.25rem;
+}
+.auth-card label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--dark);
+}
+.auth-card input {
+  /* Inherit from .input-group */
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--gray-light);
+  border-radius: 0.375rem;
+  font-size: 1rem;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+.auth-card input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+.auth-card .btn {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+.auth-card .form-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+  color: var(--gray-medium);
+}
+.auth-card .form-footer a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+.auth-card .form-footer a:hover {
+  text-decoration: underline;
+}
+.auth-card .remember-me {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.auth-card .remember-me input {
+  width: auto; /* Override width */
+  margin-right: 0.5rem;
+  height: 1rem; /* Adjust size */
+  width: 1rem;
+}
+.auth-card .remember-me label {
+  margin-bottom: 0; /* Reset margin */
+  font-weight: normal;
+  color: var(--dark);
+}
+
+/* Admin Table Styles */
+.admin-table-container {
+  background-color: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px var(--shadow);
+  overflow-x: auto; /* Allow horizontal scroll on small screens */
+  margin-top: 1.5rem;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 600px; /* Prevent excessive squishing */
+}
+.admin-table th,
+.admin-table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb; /* Light border */
+  vertical-align: middle;
+}
+.admin-table th {
+  background-color: var(--light);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--gray-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.admin-table td {
+  font-size: 0.9rem;
+  color: var(--dark);
+}
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+.admin-table .status-verified {
+  color: var(--success-text);
+  background-color: var(--success-bg);
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  display: inline-block;
+}
+.admin-table .status-pending {
+  color: var(--warning-text);
+  background-color: var(--warning-bg);
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  display: inline-block;
+}
+.admin-table .role-admin {
+  font-weight: 600;
+  color: var(--secondary);
+}
+.admin-table .actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.admin-table .actions form {
+  display: inline-block; /* Keep buttons side-by-side */
+  margin: 0;
+}
+.admin-table .actions .btn {
+  padding: 0.3rem 0.6rem; /* Smaller padding for action buttons */
+  font-size: 0.8rem;
+}
+.admin-table .actions .btn-danger {
+  /* Specific danger button */
+  background-color: #dc2626; /* Red 600 */
+  color: white;
+}
+.admin-table .actions .btn-danger:hover {
+  background-color: #b91c1c; /* Red 700 */
+}
+.admin-table .actions .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Error Page Styles (40x, 500) */
+.error-card {
+  max-width: 600px;
+  margin: 3rem auto;
+  background-color: white;
+  border-radius: 0.5rem;
+  padding: 2.5rem;
+  box-shadow: 0 4px 10px var(--shadow);
+  text-align: center;
+}
+.error-card .error-icon {
+  font-size: 3rem; /* Make icon large */
+  margin-bottom: 1rem;
+}
+.error-card .icon-403 {
+  color: #dc2626;
+} /* Red 600 */
+.error-card .icon-404 {
+  color: var(--primary);
+}
+.error-card .icon-500 {
+  color: #f59e0b;
+} /* Amber 500 */
+
+.error-card h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+.error-card .code-403 {
+  color: #dc2626;
+}
+.error-card .code-404 {
+  color: var(--primary);
+}
+.error-card .code-500 {
+  color: #f59e0b;
+}
+
+.error-card p {
+  color: var(--gray-medium);
+  margin-bottom: 1.5rem;
+  font-size: 1.1rem;
+}
+.error-card code {
+  /* Style inline code */
+  background-color: var(--gray-lighter);
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.95em;
+  color: var(--dark);
+}
+.error-card .btn {
+  margin-top: 1rem;
+}

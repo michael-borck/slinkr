@@ -1,0 +1,31 @@
+{% extends "base.html" %} {% block title %}Access Forbidden{% endblock %} {%
+block content %}
+<div class="max-w-xl mx-auto text-center">
+  <div class="card">
+    <i class="fas fa-ban text-5xl text-red-600 mb-4"></i>
+    <h1 class="text-4xl font-bold text-red-700 mb-3">403 - Access Forbidden</h1>
+    <p class="text-lg text-gray-700 mb-6">
+      Sorry, you do not have permission to access this page or perform this
+      action.
+    </p>
+    <p class="text-gray-600 mb-4">
+      If you believe this is an error, please contact the site administrator or
+      ensure you are logged in with the correct account. Accounts may require
+      admin verification for certain actions.
+    </p>
+    {% if error %}
+    <p class="text-sm text-gray-500 mt-4">Error details: {{ error }}</p>
+    {% endif %}
+    <div class="mt-8">
+      <a href="{{ url_for('index') }}" class="btn btn-primary">
+        <i class="fas fa-home mr-2"></i>Go to Homepage
+      </a>
+      {% if not current_user.is_authenticated %}
+      <a href="{{ url_for('login') }}" class="btn btn-secondary ml-2">
+        <i class="fas fa-sign-in-alt mr-2"></i>Login
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

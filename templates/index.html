@@ -1,0 +1,380 @@
+{% extends "base.html" %} {% block title %}Slinkr Hub{% endblock %} {% block
+content %}
+<div class="max-w-3xl mx-auto">
+  <div class="card">
+    <h1 class="text-3xl font-bold text-center text-teal-700 mb-6">
+      Slinkr URL Utility Hub
+    </h1>
+
+    <form id="slinkrForm" class="space-y-4">
+      <div>
+        <label
+          for="urlInput"
+          class="block text-sm font-medium text-gray-700 mb-1"
+          >Enter URL or Slinkr Code:</label
+        >
+        <input
+          type="text"
+          id="urlInput"
+          name="url"
+          class="input-field"
+          placeholder="https://example.com or {{ base_url }}/abc123 or abc123"
+          required
+        />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2"
+          >Select Action:</label
+        >
+        <div class="flex flex-wrap gap-x-6 gap-y-2">
+          <label class="inline-flex items-center">
+            <input
+              type="radio"
+              class="form-radio text-teal-600 focus:ring-teal-500"
+              name="action"
+              value="shorten"
+              checked
+            />
+            <span class="ml-2 text-gray-700">Shorten URL</span>
+          </label>
+          <label class="inline-flex items-center">
+            <input
+              type="radio"
+              class="form-radio text-teal-600 focus:ring-teal-500"
+              name="action"
+              value="expand"
+            />
+            <span class="ml-2 text-gray-700">Expand Slinkr URL</span>
+          </label>
+          <label class="inline-flex items-center">
+            <input
+              type="radio"
+              class="form-radio text-teal-600 focus:ring-teal-500"
+              name="action"
+              value="qr"
+            />
+            <span class="ml-2 text-gray-700">Generate QR Code</span>
+          </label>
+          <label class="inline-flex items-center">
+            <input
+              type="radio"
+              class="form-radio text-teal-600 focus:ring-teal-500"
+              name="action"
+              value="check"
+            />
+            <span class="ml-2 text-gray-700">Check Link Status</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="logoUploadSection" class="hidden space-y-1">
+        <label for="logoFile" class="block text-sm font-medium text-gray-700"
+          >Optional Logo for QR (PNG, JPG, GIF):</label
+        >
+        <input
+          type="file"
+          id="logoFile"
+          name="logo"
+          class="input-field"
+          accept=".png,.jpg,.jpeg,.gif"
+        />
+        <p class="text-xs text-gray-500">
+          Small logos work best. Will be placed in the center.
+        </p>
+      </div>
+
+      <button type="submit" id="submitButton" class="btn btn-primary w-full">
+        <i class="fas fa-arrow-right mr-2"></i> Perform Action
+      </button>
+    </form>
+
+    <div id="spinner" class="spinner"></div>
+
+    <div id="resultArea" class="mt-6 space-y-4" style="display: none">
+      <div id="shortenResult" style="display: none">
+        <h2 class="text-lg font-semibold mb-2 text-gray-700">
+          Your Short Link:
+        </h2>
+        <div
+          class="result-box success flex items-center justify-between flex-wrap gap-2"
+        >
+          <a
+            id="shortUrlLink"
+            href="#"
+            target="_blank"
+            class="font-mono text-teal-600 hover:underline break-all"
+          ></a>
+          <button
+            id="copyButtonShort"
+            class="copy-button btn btn-secondary btn-sm flex-shrink-0"
+          >
+            <i class="fas fa-copy mr-1"></i> Copy
+          </button>
+        </div>
+      </div>
+
+      <div id="expandResult" style="display: none">
+        <h2 class="text-lg font-semibold mb-2 text-gray-700">
+          Original Long URL:
+        </h2>
+        <div class="result-box success">
+          <a
+            id="originalUrlLink"
+            href="#"
+            target="_blank"
+            class="font-mono text-teal-600 hover:underline break-all"
+          ></a>
+        </div>
+      </div>
+
+      <div id="qrResult" class="text-center" style="display: none">
+        <h2 class="text-lg font-semibold mb-3 text-gray-700">Your QR Code:</h2>
+        <img id="qrCodeImage" src="" alt="Generated QR Code" class="mb-4" />
+        <a
+          id="downloadQrLink"
+          href="#"
+          download="slinkr_qr_code.png"
+          class="btn btn-accent"
+        >
+          <i class="fas fa-download mr-2"></i>Download QR Code
+        </a>
+      </div>
+
+      <div id="checkResult" style="display: none">
+        <h2 class="text-lg font-semibold mb-2 text-gray-700">
+          Link Status Result:
+        </h2>
+        <div id="statusBox" class="result-box"></div>
+      </div>
+
+      <div id="errorMessage" class="mt-4" style="display: none"></div>
+    </div>
+    {% if current_user.is_authenticated and not current_user.is_verified and not
+    current_user.is_admin %}
+    <div
+      class="mt-6 p-4 bg-yellow-100 border border-yellow-300 text-yellow-800 rounded-lg text-sm"
+    >
+      <i class="fas fa-info-circle mr-2"></i>Your account is pending
+      verification by an admin. Some features (like URL shortening and link
+      checking) may be unavailable until verified.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  // --- DOM Elements ---
+  const form = document.getElementById("slinkrForm");
+  const urlInput = document.getElementById("urlInput");
+  const actionRadios = document.querySelectorAll('input[name="action"]');
+  const logoUploadSection = document.getElementById("logoUploadSection");
+  const logoFileInput = document.getElementById("logoFile");
+  const submitButton = document.getElementById("submitButton");
+  const spinner = document.getElementById("spinner");
+  const resultArea = document.getElementById("resultArea");
+  const allResultDivs = resultArea.querySelectorAll(
+    ':scope > div[id$="Result"]',
+  ); // Get all result divs
+  const errorMessageDiv = document.getElementById("errorMessage");
+
+  // Result specific elements
+  const shortenResultDiv = document.getElementById("shortenResult");
+  const shortUrlLink = document.getElementById("shortUrlLink");
+  const copyButtonShort = document.getElementById("copyButtonShort");
+  const expandResultDiv = document.getElementById("expandResult");
+  const originalUrlLink = document.getElementById("originalUrlLink");
+  const qrResultDiv = document.getElementById("qrResult");
+  const qrCodeImage = document.getElementById("qrCodeImage");
+  const downloadQrLink = document.getElementById("downloadQrLink");
+  const checkResultDiv = document.getElementById("checkResult");
+  const statusBox = document.getElementById("statusBox");
+
+  // --- Event Listeners ---
+
+  // Show/hide logo upload based on action
+  actionRadios.forEach((radio) => {
+    radio.addEventListener("change", () => {
+      if (radio.value === "qr" && radio.checked) {
+        logoUploadSection.classList.remove("hidden");
+      } else {
+        logoUploadSection.classList.add("hidden");
+      }
+      // Clear results when action changes
+      hideAllResults();
+    });
+  });
+
+  // Form submission handler
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hideAllResults(); // Clear previous results/errors
+    showSpinner("spinner", true);
+    submitButton.disabled = true; // Prevent double-clicks
+
+    const selectedAction = document.querySelector(
+      'input[name="action"]:checked',
+    ).value;
+    const urlValue = urlInput.value;
+    let endpoint = "";
+    let requestBody = {};
+    let requestOptions = {
+      method: "POST",
+      headers: {},
+    };
+    let isFormData = false;
+
+    // Prepare request based on action
+    switch (selectedAction) {
+      case "shorten":
+        endpoint = "{{ url_for('api_shorten') }}";
+        requestBody = JSON.stringify({ url: urlValue });
+        requestOptions.headers["Content-Type"] = "application/json";
+        break;
+      case "expand":
+        endpoint = "{{ url_for('api_expand') }}";
+        requestBody = JSON.stringify({ short_url: urlValue });
+        requestOptions.headers["Content-Type"] = "application/json";
+        break;
+      case "qr":
+        endpoint = "{{ url_for('api_qr') }}";
+        const formData = new FormData(); // Use FormData for file upload
+        formData.append("url", urlValue);
+        if (logoFileInput.files.length > 0) {
+          formData.append("logo", logoFileInput.files[0]);
+        }
+        requestBody = formData;
+        isFormData = true;
+        // Don't set Content-Type header for FormData, browser does it
+        break;
+      case "check":
+        endpoint = "{{ url_for('api_check') }}";
+        requestBody = JSON.stringify({ url: urlValue });
+        requestOptions.headers["Content-Type"] = "application/json";
+        break;
+      default:
+        showSpinner("spinner", false);
+        submitButton.disabled = false;
+        showMessage("errorMessage", "Invalid action selected.", "error");
+        resultArea.style.display = "block"; // Show error message area
+        return;
+    }
+
+    if (!isFormData) {
+      requestOptions.body = requestBody;
+    } else {
+      // For FormData, body is set directly without stringify
+      requestOptions.body = requestBody;
+    }
+
+    // --- Make API Call ---
+    try {
+      const response = await fetch(endpoint, requestOptions);
+      const data = await response.json();
+
+      showSpinner("spinner", false);
+      submitButton.disabled = false;
+      resultArea.style.display = "block"; // Show result area
+
+      if (response.ok) {
+        errorMessageDiv.style.display = "none"; // Hide error message div
+        // Display result based on action
+        switch (selectedAction) {
+          case "shorten":
+            shortUrlLink.href = data.short_url;
+            shortUrlLink.textContent = data.short_url;
+            copyButtonShort.onclick = () =>
+              copyToClipboard(data.short_url, copyButtonShort);
+            shortenResultDiv.style.display = "block";
+            break;
+          case "expand":
+            let displayUrl = data.original_url;
+            if (displayUrl && !displayUrl.match(/^https?:\/\//)) {
+              displayUrl = "http://" + displayUrl;
+            }
+            originalUrlLink.href = displayUrl || "#"; // Handle potential null/empty URL
+            originalUrlLink.textContent = data.original_url || "N/A";
+            expandResultDiv.style.display = "block";
+            break;
+          case "qr":
+            qrCodeImage.src = data.qr_image_data;
+            downloadQrLink.href = data.qr_image_data;
+            qrResultDiv.style.display = "block";
+            break;
+          case "check":
+            displayCheckResult(data); // Use helper function
+            checkResultDiv.style.display = "block";
+            break;
+        }
+      } else {
+        // Handle API errors (4xx, 5xx)
+        let errorMsg = `Error: ${data.error || response.statusText || "Unknown error"}`;
+        if (response.status === 403) {
+          // Forbidden (likely verification needed)
+          errorMsg = `Error: ${data.error || "Access denied. Your account might need verification."}`;
+        } else if (response.status === 429) {
+          // Rate limit
+          errorMsg = `Error: ${data.error || "Rate limit exceeded. Please try again later."}`;
+        }
+        // Display error in the dedicated error div within the result area
+        showMessage("errorMessage", errorMsg, "error");
+      }
+    } catch (error) {
+      // Handle network errors, etc.
+      showSpinner("spinner", false);
+      submitButton.disabled = false;
+      resultArea.style.display = "block"; // Show result area
+      console.error("Fetch Error:", error);
+      showMessage(
+        "errorMessage",
+        "An unexpected network error occurred. Please check your connection and try again.",
+        "error",
+      );
+    }
+  });
+
+  // --- Helper Functions ---
+  function hideAllResults() {
+    allResultDivs.forEach((div) => (div.style.display = "none"));
+    errorMessageDiv.style.display = "none"; // Also hide error message
+    resultArea.style.display = "none"; // Hide the whole area initially
+  }
+
+  function displayCheckResult(data) {
+    statusBox.innerHTML = ""; // Clear previous content
+    statusBox.className = "result-box"; // Reset classes
+
+    if (data.error) {
+      // Handle errors reported by the check endpoint (e.g., timeout, connection error)
+      let errorHtml = `<p class="text-lg font-semibold mb-2">${data.status_indicator || "❓"} Error</p>`;
+      errorHtml += `<p>${data.error}</p>`;
+      statusBox.innerHTML = errorHtml;
+      statusBox.classList.add("error");
+    } else {
+      // Display successful check result
+      let statusHtml = `<p class="text-lg font-semibold mb-2">${data.status_indicator || ""} ${data.status_code || ""} ${data.status_text || ""}</p>`;
+      statusHtml += `<p><strong>Final URL:</strong> <a href="${data.final_url}" target="_blank" class="text-teal-600 hover:underline break-all">${data.final_url}</a></p>`;
+
+      // Add appropriate background color based on status indicator
+      if (data.status_indicator === "✅") statusBox.classList.add("success");
+      else if (
+        data.status_indicator === "❌" ||
+        data.status_indicator === "⚠️" ||
+        data.status_indicator === "🔌" ||
+        data.status_indicator === "⏱️" ||
+        data.status_indicator === "🔒❌"
+      )
+        statusBox.classList.add("error");
+      else statusBox.classList.add("info"); // Default info style for redirects etc.
+
+      statusBox.innerHTML = statusHtml;
+    }
+    checkResultDiv.style.display = "block"; // Ensure the parent div is visible
+  }
+
+  // Initialize: Hide logo section if QR not selected initially
+  if (!document.querySelector('input[name="action"][value="qr"]:checked')) {
+    logoUploadSection.classList.add("hidden");
+  }
+</script>
+{% endblock %}

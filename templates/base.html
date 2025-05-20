@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Slinkr{% endblock %} - URL Utility Hub</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="{{ url_for('index') }}" class="logo">
+            <svg class="logo-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+            Slinkr
+        </a>
+
+        <div class="nav-links">
+            {% set active_page = request.endpoint %}
+            <a href="{{ url_for('index') }}" class="{{ 'active' if active_page == 'index' }}">Home</a>
+            <a href="{{ url_for('about') }}" class="{{ 'active' if active_page == 'about' }}">About</a>
+            {% if current_user.is_authenticated and current_user.is_admin %}
+                <a href="{{ url_for('admin_users') }}" class="{{ 'active' if active_page == 'admin_users' }}">Admin</a>
+            {% endif %}
+        </div>
+
+        <div class="auth-links">
+            {% if current_user.is_authenticated %}
+                 <span class="user-info">
+                     Hi, {{ current_user.username }}!
+                     {% if not current_user.is_verified and not current_user.is_admin %}
+                        <span class="pending-verification">Pending</span>
+                     {% endif %}
+                 </span>
+                 <form action="{{ url_for('logout') }}" method="GET" style="display: inline;">
+                     <button type="submit" class="logout">Logout</button>
+                 </form>
+            {% else %}
+                 <a href="{{ url_for('login') }}" class="login">Login</a>
+                 <a href="{{ url_for('register') }}" class="register">Register</a>
+            {% endif %}
+        </div>
+
+        <button class="mobile-menu-button" aria-label="Toggle menu" aria-expanded="false" onclick="toggleMobileMenu()">
+            <svg id="burger-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                 <line x1="3" y1="12" x2="21" y2="12"></line>
+                 <line x1="3" y1="6" x2="21" y2="6"></line>
+                 <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+            <svg id="close-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                 <line x1="18" y1="6" x2="6" y2="18"></line>
+                 <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </nav>
+
+    <div class="mobile-menu" id="mobile-menu">
+        {% set active_page = request.endpoint %}
+        <a href="{{ url_for('index') }}" class="{{ 'active' if active_page == 'index' }}">Home</a>
+        <a href="{{ url_for('about') }}" class="{{ 'active' if active_page == 'about' }}">About</a>
+        {% if current_user.is_authenticated and current_user.is_admin %}
+            <a href="{{ url_for('admin_users') }}" class="{{ 'active' if active_page == 'admin_users' }}">Admin</a>
+        {% endif %}
+
+        {% if current_user.is_authenticated %}
+            <div class="user-info-mobile">
+                <span class="username">Hi, {{ current_user.username }}!</span>
+                 {% if not current_user.is_verified and not current_user.is_admin %}
+                    <span class="pending-verification-mobile">Pending Verification</span>
+                 {% endif %}
+                 <a href="{{ url_for('logout') }}" class="logout-link">Logout</a>
+            </div>
+        {% else %}
+            <div class="auth-links-mobile">
+                <a href="{{ url_for('login') }}" class="login">Login</a>
+                <a href="{{ url_for('register') }}" class="register">Register</a>
+            </div>
+        {% endif %}
+    </div>
+
+
+    <main>
+        <div class="flash-messages-container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        {# Map Flask categories (danger, warning, info, success) to CSS classes #}
+                        {% set category_map = {'danger': 'error', 'warning': 'warning', 'info': 'info', 'success': 'success'} %}
+                        {% set css_class = category_map.get(category, 'info') %} {# Default to info #}
+                        <div class="flash-message result-box {{ css_class }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>&copy; <span id="current-year"></span> Slinkr - URL Utility Hub. All rights reserved.</p>
+    </footer>
+
+    <script>
+        // Set current year in footer
+        document.getElementById('current-year').textContent = new Date().getFullYear();
+
+        // Mobile menu toggle function
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            const burgerIcon = document.getElementById('burger-icon');
+            const closeIcon = document.getElementById('close-icon');
+            const expanded = menu.classList.toggle('active'); // Use 'active' class
+
+            burgerIcon.style.display = expanded ? 'none' : 'block';
+            closeIcon.style.display = expanded ? 'block' : 'none';
+            document.querySelector('.mobile-menu-button').setAttribute('aria-expanded', expanded);
+        }
+
+        // --- Global Helper Functions (Can be used by inheriting templates) ---
+
+        // Helper function to display messages in a specific div
+        function showMessage(elementId, message, type = 'info') { // type: 'info', 'success', 'error', 'warning'
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            // Create a paragraph for the message content
+            const messageP = document.createElement('p');
+            messageP.textContent = message;
+            // Clear previous content and set new message
+            el.innerHTML = '';
+            el.appendChild(messageP);
+            // Apply appropriate result-box class based on type
+            el.className = 'result-box ' + type; // Assumes CSS classes: result-box, success, error, info, warning
+            el.style.display = 'block'; // Make sure it's visible
+        }
+
+        // Helper function to show/hide spinner
+        function showSpinner(spinnerId, show = true) {
+            const spinner = document.getElementById(spinnerId);
+            if (spinner) {
+                spinner.style.display = show ? 'block' : 'none';
+            }
+        }
+
+        // Helper function to copy text
+        async function copyToClipboard(text, buttonElement) {
+            if (!navigator.clipboard) {
+                // Fallback for older browsers
+                try {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed"; // Avoid scrolling
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    if (buttonElement) updateCopyButton(buttonElement, true);
+                } catch (err) {
+                    console.error('Fallback: Oops, unable to copy', err);
+                    if (buttonElement) updateCopyButton(buttonElement, false);
+                }
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(text);
+                console.log('Text copied to clipboard');
+                if (buttonElement) updateCopyButton(buttonElement, true);
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                 if (buttonElement) updateCopyButton(buttonElement, false);
+            }
+        }
+
+         // Update copy button text and state
+        function updateCopyButton(button, success) {
+            const originalContent = button.dataset.originalContent || button.innerHTML; // Store original HTML
+            const icon = button.querySelector('svg, i'); // Find icon (SVG or Font Awesome)
+
+            if (success) {
+                // Checkmark SVG (example)
+                button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied!`;
+                button.disabled = true;
+                setTimeout(() => {
+                    button.innerHTML = originalContent; // Restore original HTML
+                    button.disabled = false;
+                }, 2000); // Revert after 2 seconds
+            } else {
+                 // X Mark SVG (example)
+                 button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> Failed`;
+                 button.disabled = true;
+                 setTimeout(() => {
+                    button.innerHTML = originalContent;
+                    button.disabled = false;
+                }, 2000);
+            }
+        }
+
+        // Store original button content on load
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.copy-button').forEach(button => {
+                button.dataset.originalContent = button.innerHTML;
+            });
+        });
+
+    </script>
+    {% block scripts %}{% endblock %} </body>
+</html>
