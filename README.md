@@ -1,3 +1,7 @@
+<!-- BADGES:START -->
+[![css](https://img.shields.io/badge/-css-1572b6?style=flat-square)](https://github.com/topics/css) [![flask](https://img.shields.io/badge/-flask-000000?style=flat-square)](https://github.com/topics/flask) [![flask-bcrypt](https://img.shields.io/badge/-flask--bcrypt-blue?style=flat-square)](https://github.com/topics/flask-bcrypt) [![flask-login](https://img.shields.io/badge/-flask--login-blue?style=flat-square)](https://github.com/topics/flask-login) [![html](https://img.shields.io/badge/-html-e34f26?style=flat-square)](https://github.com/topics/html) [![python](https://img.shields.io/badge/-python-3776ab?style=flat-square)](https://github.com/topics/python) [![qr-code-generator](https://img.shields.io/badge/-qr--code--generator-blue?style=flat-square)](https://github.com/topics/qr-code-generator) [![tinydb](https://img.shields.io/badge/-tinydb-blue?style=flat-square)](https://github.com/topics/tinydb) [![url-expansion](https://img.shields.io/badge/-url--expansion-blue?style=flat-square)](https://github.com/topics/url-expansion) [![url-shortener](https://img.shields.io/badge/-url--shortener-blue?style=flat-square)](https://github.com/topics/url-shortener)
+<!-- BADGES:END -->
+
 [![Build Status](https://img.shields.io/github/actions/workflow/status/your-username/slinkr/ci.yml?branch=main)](https://github.com/your-username/slinkr/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
