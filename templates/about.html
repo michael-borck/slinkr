@@ -150,9 +150,8 @@
     {# --- Call to Action Section --- #}
     <section class="cta">
         <h2>Ready to Simplify Your Links?</h2>
-        <p>Slinkr provides the essential tools you need in one convenient hub. Register for free to get started.</p>
-        {# Link to the registration page #}
-        <a href="{{ url_for('register') }}" class="btn">Get Started for Free</a>
+        <p>Slinkr provides the essential tools you need in one convenient hub. Log in with just your email to get started.</p>
+        <a href="{{ url_for('login') }}" class="btn" onclick="return openLoginModal()">Get Started for Free</a>
     </section>
 
 </div> {# --- End Container --- #}

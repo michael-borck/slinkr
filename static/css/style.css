@@ -361,6 +361,104 @@ main {
   display: none !important;
 }
 
+/* --- Login Modal --- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 41, 55, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+
+.modal-card {
+  position: relative;
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 24px 60px rgba(31, 41, 55, 0.3);
+  width: 100%;
+  max-width: 420px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.modal-card h2 {
+  color: var(--dark);
+  font-size: 1.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.modal-sub {
+  color: var(--gray-medium);
+  font-size: 0.92rem;
+  margin-bottom: 1.25rem;
+}
+
+.modal-card input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--gray-light);
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  font-family: inherit;
+}
+.modal-card input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+
+.modal-card input.code-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.6rem;
+  letter-spacing: 0.5em;
+  text-align: center;
+  padding-left: 1.5em; /* Compensate for trailing letter-spacing */
+}
+
+.modal-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.modal-close {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.9rem;
+  background: none;
+  border: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--gray-medium);
+  cursor: pointer;
+}
+.modal-close:hover { color: var(--dark); }
+
+.modal-links {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--gray-medium);
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+.modal-links a { color: var(--primary-dark); text-decoration: none; }
+.modal-links a:hover { text-decoration: underline; }
+.modal-links a.disabled { color: var(--gray-light); pointer-events: none; }
+
+.modal-error {
+  margin-top: 1rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-text);
+  border-radius: 0.5rem;
+  font-size: 0.88rem;
+}
+
 /* --- Action Card Grid --- */
 .card-grid {
   display: grid;

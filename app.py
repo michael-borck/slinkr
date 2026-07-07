@@ -1,8 +1,11 @@
 import os
 import io
 import base64
+import hashlib
+import hmac
 import ipaddress
 import json
+import re
 import secrets
 import socket
 import sqlite3
@@ -18,7 +21,6 @@ from flask_login import (
     LoginManager, UserMixin, login_user, logout_user, login_required,
     current_user
 )
-from flask_bcrypt import Bcrypt
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -37,6 +39,18 @@ DB_FILE = os.path.join(DATA_DIR, 'slinkr.db') # SQLite database
 LEGACY_TINYDB_FILE = os.path.join(DATA_DIR, 'slinkr_data.json') # Old TinyDB file (migrated on first run)
 LOGO_UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+# Passwordless login (email codes via Resend)
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "") # Empty = dev mode (codes printed to logs)
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "Slinkr <login@slinkr.eduserver.au>")
+# Users whose email domain is listed here are verified automatically on first login;
+# everyone else can log in but needs admin approval for shortening/checking.
+AUTO_VERIFY_DOMAINS = {
+    d.strip().lower() for d in os.environ.get("AUTO_VERIFY_DOMAINS", "curtin.edu.au").split(",") if d.strip()
+}
+LOGIN_CODE_TTL_MINUTES = 10
+LOGIN_CODE_RESEND_SECONDS = 60
+LOGIN_CODE_MAX_ATTEMPTS = 5
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
 if not SECRET_KEY:
@@ -71,7 +85,8 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT NOT NULL DEFAULT '', -- Legacy column; login is passwordless
+
     is_admin INTEGER NOT NULL DEFAULT 0,
     is_verified INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -84,6 +99,13 @@ CREATE TABLE IF NOT EXISTS links (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_links_long_url ON links(long_url);
+CREATE TABLE IF NOT EXISTS login_codes (
+    email TEXT PRIMARY KEY,
+    code_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0
+);
 """
 
 def _connect():
@@ -152,15 +174,16 @@ def init_db():
 init_db()
 
 # Security & Auth
-bcrypt = Bcrypt(app)
 csrf = CSRFProtect(app)
 login_manager = LoginManager(app)
-login_manager.login_view = 'login' # Redirect to /login if @login_required fails
-login_manager.login_message_category = 'info' # Flash message category
 
-# Used to equalize login timing when the username doesn't exist (prevents
-# user enumeration via response-time differences).
-DUMMY_PASSWORD_HASH = bcrypt.generate_password_hash("timing-equalization-dummy").decode('utf-8')
+@login_manager.unauthorized_handler
+def handle_unauthorized():
+    """Sends unauthenticated users to the home page with the login modal open."""
+    if request.path.startswith('/api/') or request.path.startswith('/auth/'):
+        return jsonify({"error": "Login required"}), 401
+    flash("Please log in to continue.", "info")
+    return redirect(url_for('index', login=1))
 
 # Rate Limiting (set RATELIMIT_STORAGE_URI=redis://host:6379/0 in production
 # so limits are shared across workers and survive restarts)
@@ -179,14 +202,9 @@ class User(UserMixin):
         self.id = user_row['id']
         self.username = user_row['username']
         self.email = user_row['email']
-        self.password_hash = user_row['password_hash']
         self.is_admin = bool(user_row['is_admin'])
         self.is_verified = bool(user_row['is_verified'])
         self.created_at = user_row['created_at']
-
-    def verify_password(self, password):
-        """Checks if the provided password matches the stored hash."""
-        return bcrypt.check_password_hash(self.password_hash, password)
 
     # Required by Flask-Login
     def get_id(self):
@@ -242,6 +260,64 @@ def allowed_file(filename):
     """Checks if the uploaded file extension is allowed."""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# --- Passwordless Login Helpers ---
+
+EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+def normalize_email(email):
+    return (email or '').strip().lower()
+
+def hash_login_code(email, code):
+    """Codes are stored as an HMAC keyed by SECRET_KEY, never in plain text."""
+    return hmac.new(SECRET_KEY.encode(), f"{email}:{code}".encode(), hashlib.sha256).hexdigest()
+
+def is_auto_verified(email):
+    return email.rsplit('@', 1)[-1] in AUTO_VERIFY_DOMAINS
+
+def unique_username(db, email):
+    """Derives a display name from the email local part, deduping if taken."""
+    base = re.sub(r'[^a-zA-Z0-9._-]', '', email.split('@')[0])[:30] or 'user'
+    candidate = base
+    n = 1
+    while db.execute("SELECT 1 FROM users WHERE username = ?", (candidate,)).fetchone():
+        n += 1
+        candidate = f"{base}{n}"
+    return candidate
+
+def send_login_code(email, code):
+    """Sends the login code via Resend. Without an API key (dev mode) the code
+    is printed to the server log instead."""
+    if not RESEND_API_KEY:
+        print(f"[DEV] Login code for {email}: {code}")
+        return True
+    try:
+        resp = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+            json={
+                "from": EMAIL_FROM,
+                "to": [email],
+                "subject": f"{code} is your Slinkr login code",
+                "text": (f"Your Slinkr login code is: {code}\n\n"
+                         f"It expires in {LOGIN_CODE_TTL_MINUTES} minutes. "
+                         "If you didn't request this, you can ignore this email."),
+                "html": (f"<div style='font-family:sans-serif;max-width:420px'>"
+                         f"<h2 style='color:#1f2937'>Your Slinkr login code</h2>"
+                         f"<p style='font-size:2rem;letter-spacing:0.3em;font-weight:700;"
+                         f"color:#059669;margin:16px 0'>{code}</p>"
+                         f"<p style='color:#4b5563'>It expires in {LOGIN_CODE_TTL_MINUTES} minutes. "
+                         f"If you didn't request this, you can ignore this email.</p></div>"),
+            },
+            timeout=10,
+        )
+        if resp.status_code >= 400:
+            print(f"Resend API error {resp.status_code}: {resp.text[:300]}")
+            return False
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Resend request failed: {e}")
+        return False
 
 def generate_qr_code_base64(url, logo_path=None, error_correction=qrcode.constants.ERROR_CORRECT_H):
     """Generates a QR code (optionally with a logo) and returns it as a base64 encoded string."""
@@ -585,125 +661,98 @@ def api_check():
 
 # --- Authentication Routes ---
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    """Handles user registration."""
-    # Redirect logged-in users away from registration page
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-
-    if request.method == 'POST':
-        username = request.form.get('username')
-        email = request.form.get('email')
-        password = request.form.get('password')
-        confirm_password = request.form.get('confirm_password')
-
-        # --- Input Validation ---
-        error = False
-        if not username or not email or not password or not confirm_password:
-            flash('All fields are required.', 'danger')
-            error = True
-        if password != confirm_password:
-            flash('Passwords do not match.', 'danger')
-            error = True
-        if len(password) < 8:
-             flash('Password must be at least 8 characters long.', 'danger')
-             error = True
-        # Basic email format check (more robust validation is possible)
-        if '@' not in email or '.' not in email.split('@')[-1]:
-             flash('Invalid email address format.', 'danger')
-             error = True
-
-        db = get_db()
-
-        # --- Uniqueness Check (single generic message to limit account enumeration) ---
-        if not error:
-            taken = db.execute(
-                "SELECT 1 FROM users WHERE username = ? OR email = ?", (username, email)
-            ).fetchone()
-            if taken:
-                flash('That username or email is not available. Please choose another.', 'danger')
-                error = True
-
-        # --- Proceed if no errors ---
-        if not error:
-            # Hash password securely
-            hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-
-            # Determine if this is the very first user
-            is_first_user = db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
-
-            # Insert new user into the database
-            try:
-                db.execute(
-                    "INSERT INTO users (username, email, password_hash, is_admin, is_verified, created_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
-                    (username, email, hashed_password,
-                     int(is_first_user), # First user automatically becomes admin
-                     int(is_first_user), # First user is automatically verified
-                     utcnow_iso())
-                )
-                db.commit()
-            except sqlite3.IntegrityError:
-                # Race with a concurrent registration using the same username/email
-                flash('That username or email is not available. Please choose another.', 'danger')
-                return render_template('register.html')
-
-            # Provide feedback to the user
-            if is_first_user:
-                 flash(f'Admin account created for {username}! You are automatically verified.', 'success')
-            else:
-                 flash(f'Account created for {username}! Please wait for admin verification to use all features.', 'info')
-
-            return redirect(url_for('login')) # Redirect to login after successful registration
-
-        # If there were errors, re-render the registration page (flashed messages will show)
-        return render_template('register.html')
-
-    # Handle GET request (show the registration form)
-    return render_template('register.html')
-
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login')
 def login():
-    """Handles user login."""
-    # Redirect logged-in users away from login page
+    """Legacy URL — the login flow now lives in a modal on the home page."""
+    return redirect(url_for('index', login=1))
+
+@app.route('/auth/request-code', methods=['POST'])
+@limiter.limit("5 per minute; 30 per hour")
+def auth_request_code():
+    """Step 1 of passwordless login: email a one-time code to the user."""
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
+        return jsonify({"error": "Already logged in"}), 400
+    data = request.get_json(silent=True) or {}
+    email = normalize_email(data.get('email'))
+    if not EMAIL_RE.match(email):
+        return jsonify({"error": "Please enter a valid email address"}), 400
 
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        remember = True if request.form.get('remember') else False # Check if "remember me" is ticked
+    db = get_db()
+    now = datetime.datetime.now(datetime.timezone.utc)
 
-        # Find user by username in the database
-        user_row = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    # Per-email resend throttle (in addition to the per-IP rate limit)
+    row = db.execute("SELECT created_at FROM login_codes WHERE email = ?", (email,)).fetchone()
+    if row:
+        created = datetime.datetime.fromisoformat(row['created_at'])
+        wait = LOGIN_CODE_RESEND_SECONDS - (now - created).total_seconds()
+        if wait > 0:
+            return jsonify({"error": f"Please wait {int(wait) + 1}s before requesting another code"}), 429
 
-        # Check if user exists and password is correct
-        if user_row:
-            user = User(user_row) # Create User object from database data
-            if user.verify_password(password):
-                # Password matches, log the user in
-                login_user(user, remember=remember)
-                flash(f'Welcome back, {user.username}!', 'success')
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    expires = now + datetime.timedelta(minutes=LOGIN_CODE_TTL_MINUTES)
+    db.execute(
+        "INSERT INTO login_codes (email, code_hash, created_at, expires_at, attempts)"
+        " VALUES (?, ?, ?, ?, 0)"
+        " ON CONFLICT(email) DO UPDATE SET code_hash = excluded.code_hash,"
+        " created_at = excluded.created_at, expires_at = excluded.expires_at, attempts = 0",
+        (email, hash_login_code(email, code), now.isoformat(), expires.isoformat())
+    )
+    db.commit()
 
-                # Redirect to the page the user was trying to access, or to index
-                next_page = request.args.get('next')
-                # Basic security check for open redirect vulnerability
-                if next_page and urlparse(next_page).netloc == '':
-                    return redirect(next_page)
-                else:
-                    return redirect(url_for('index'))
-            else:
-                # Password incorrect
-                flash('Login Unsuccessful. Please check username and password.', 'danger')
-        else:
-            # User not found — still run a hash check so response timing
-            # doesn't reveal whether the username exists
-            bcrypt.check_password_hash(DUMMY_PASSWORD_HASH, password or '')
-            flash('Login Unsuccessful. Please check username and password.', 'danger')
+    if not send_login_code(email, code):
+        return jsonify({"error": "Could not send the email. Please try again shortly."}), 502
+    return jsonify({"ok": True})
 
-    # Handle GET request (show the login form)
-    return render_template('login.html')
+@app.route('/auth/verify-code', methods=['POST'])
+@limiter.limit("10 per minute")
+def auth_verify_code():
+    """Step 2 of passwordless login: verify the code, create the account if
+    it's the user's first login, and start the session."""
+    if current_user.is_authenticated:
+        return jsonify({"error": "Already logged in"}), 400
+    data = request.get_json(silent=True) or {}
+    email = normalize_email(data.get('email'))
+    code = (data.get('code') or '').strip()
+    if not EMAIL_RE.match(email) or not re.fullmatch(r'\d{6}', code):
+        return jsonify({"error": "Invalid email or code format"}), 400
+
+    db = get_db()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    row = db.execute("SELECT * FROM login_codes WHERE email = ?", (email,)).fetchone()
+
+    generic_error = "That code is invalid or has expired. Please request a new one."
+    if not row or datetime.datetime.fromisoformat(row['expires_at']) < now:
+        return jsonify({"error": generic_error}), 400
+    if row['attempts'] >= LOGIN_CODE_MAX_ATTEMPTS:
+        db.execute("DELETE FROM login_codes WHERE email = ?", (email,))
+        db.commit()
+        return jsonify({"error": generic_error}), 400
+    if not hmac.compare_digest(row['code_hash'], hash_login_code(email, code)):
+        db.execute("UPDATE login_codes SET attempts = attempts + 1 WHERE email = ?", (email,))
+        db.commit()
+        return jsonify({"error": "Incorrect code. Please check and try again."}), 400
+
+    # Code is valid — consume it
+    db.execute("DELETE FROM login_codes WHERE email = ?", (email,))
+
+    user_row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    if not user_row:
+        is_first_user = db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+        verified = is_first_user or is_auto_verified(email)
+        db.execute(
+            "INSERT INTO users (username, email, password_hash, is_admin, is_verified, created_at)"
+            " VALUES (?, ?, '', ?, ?, ?)",
+            (unique_username(db, email), email, int(is_first_user), int(verified), utcnow_iso())
+        )
+        user_row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    elif not user_row['is_verified'] and is_auto_verified(email):
+        # Domain was whitelisted after this account was created — upgrade it
+        db.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_row['id'],))
+        user_row = db.execute("SELECT * FROM users WHERE id = ?", (user_row['id'],)).fetchone()
+    db.commit()
+
+    login_user(User(user_row), remember=True)
+    return jsonify({"ok": True, "username": user_row['username'], "verified": bool(user_row['is_verified'])})
 
 @app.route('/logout')
 @login_required # User must be logged in to log out
@@ -827,28 +876,28 @@ def internal_server_error(e):
 
 # --- Admin Bootstrap (non-interactive, for Docker/production) ---
 def bootstrap_admin_from_env():
-    """Creates the initial admin user from ADMIN_USERNAME / ADMIN_EMAIL /
-    ADMIN_PASSWORD environment variables if no admin exists yet.
-    (Alternatively, the first user to register via the web UI becomes admin.)"""
-    username = os.environ.get("ADMIN_USERNAME")
-    email = os.environ.get("ADMIN_EMAIL")
-    password = os.environ.get("ADMIN_PASSWORD")
-    if not (username and email and password):
+    """Creates the initial admin account from ADMIN_EMAIL (and optionally
+    ADMIN_USERNAME) if no admin exists yet. Login is passwordless — the admin
+    signs in with an emailed code like everyone else.
+    (Alternatively, the very first user to log in becomes admin.)"""
+    email = normalize_email(os.environ.get("ADMIN_EMAIL"))
+    if not email:
+        return
+    if not EMAIL_RE.match(email):
+        print("WARNING: ADMIN_EMAIL is not a valid email address; admin not created.")
         return
     conn = _connect()
     try:
         if conn.execute("SELECT 1 FROM users WHERE is_admin = 1").fetchone():
             return
-        if len(password) < 8:
-            print("WARNING: ADMIN_PASSWORD must be at least 8 characters; admin not created.")
-            return
+        username = os.environ.get("ADMIN_USERNAME") or email.split('@')[0]
         conn.execute(
             "INSERT INTO users (username, email, password_hash, is_admin, is_verified, created_at)"
-            " VALUES (?, ?, ?, 1, 1, ?)",
-            (username, email, bcrypt.generate_password_hash(password).decode('utf-8'), utcnow_iso())
+            " VALUES (?, ?, '', 1, 1, ?)",
+            (username, email, utcnow_iso())
         )
         conn.commit()
-        print(f"Admin user '{username}' created from environment variables.")
+        print(f"Admin account '{username}' <{email}> created from environment variables.")
     except sqlite3.IntegrityError:
         pass # Another worker created it first — fine
     finally:
@@ -858,52 +907,8 @@ bootstrap_admin_from_env()
 
 # --- Run the App ---
 if __name__ == '__main__':
-    # --- Initial Admin User Creation (Command-line prompt if none exist) ---
-    # This runs only when the script is executed directly (python app.py)
-    conn = _connect()
-    if not conn.execute("SELECT 1 FROM users WHERE is_admin = 1").fetchone():
-         print("------------------------------------------")
-         print("No admin user found. Creating one now...")
-         print("------------------------------------------")
-         while True:
-            admin_username = input("Enter admin username: ").strip()
-            if conn.execute("SELECT 1 FROM users WHERE username = ?", (admin_username,)).fetchone():
-                print("Username already exists. Try again.")
-            elif not admin_username:
-                 print("Username cannot be empty. Try again.")
-            else:
-                break
-         while True:
-            admin_email = input("Enter admin email: ").strip()
-            if conn.execute("SELECT 1 FROM users WHERE email = ?", (admin_email,)).fetchone():
-                print("Email already exists. Try again.")
-            elif '@' not in admin_email or '.' not in admin_email.split('@')[-1]:
-                 print("Invalid email format. Try again.")
-            else:
-                 break
-         while True:
-            admin_password = input("Enter admin password (min 8 chars): ").strip()
-            if len(admin_password) < 8:
-                print("Password must be at least 8 characters long. Try again.")
-            else:
-                confirm_password = input("Confirm admin password: ").strip()
-                if admin_password == confirm_password:
-                    break
-                else:
-                    print("Passwords do not match. Try again.")
-
-         # Hash the password and insert the admin user
-         hashed_password = bcrypt.generate_password_hash(admin_password).decode('utf-8')
-         conn.execute(
-            "INSERT INTO users (username, email, password_hash, is_admin, is_verified, created_at)"
-            " VALUES (?, ?, ?, 1, 1, ?)",
-            (admin_username, admin_email, hashed_password, utcnow_iso())
-         )
-         conn.commit()
-         print("------------------------------------------")
-         print(f"Admin user '{admin_username}' created and verified successfully.")
-         print("------------------------------------------")
-    conn.close()
+    # No admin? Set ADMIN_EMAIL in the environment, or just log in —
+    # the very first user to sign in becomes admin automatically.
 
     # --- Start Flask Development Server ---
     # Use 0.0.0.0 to make it accessible on the local network

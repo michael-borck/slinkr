@@ -42,8 +42,7 @@
                      <button type="submit" class="logout">Logout</button>
                  </form>
             {% else %}
-                 <a href="{{ url_for('login') }}" class="login">Login</a>
-                 <a href="{{ url_for('register') }}" class="register">Register</a>
+                 <a href="{{ url_for('login') }}" class="register" onclick="return openLoginModal()">Log in</a>
             {% endif %}
         </div>
 
@@ -78,8 +77,7 @@
             </div>
         {% else %}
             <div class="auth-links-mobile">
-                <a href="{{ url_for('login') }}" class="login">Login</a>
-                <a href="{{ url_for('register') }}" class="register">Register</a>
+                <a href="{{ url_for('login') }}" class="login" onclick="return openLoginModal()">Log in</a>
             </div>
         {% endif %}
     </div>
@@ -107,6 +105,143 @@
     <footer class="footer">
         <p>&copy; <span id="current-year"></span> Slinkr: Stretch, Shrink, Share. All rights reserved.</p>
     </footer>
+
+    {% if not current_user.is_authenticated %}
+    {# --- Passwordless Login Modal --- #}
+    <div class="modal-overlay" id="loginModal" hidden>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+            <button type="button" class="modal-close" onclick="closeLoginModal()" aria-label="Close">&times;</button>
+
+            <div id="loginStepEmail">
+                <h2 id="loginTitle">Log in or sign up</h2>
+                <p class="modal-sub">Enter your email and we'll send you a six-digit code.
+                   No password needed — new accounts are created automatically.</p>
+                <input type="email" id="loginEmail" placeholder="you@example.com"
+                       autocomplete="email" spellcheck="false">
+                <button type="button" class="btn modal-btn" id="sendCodeBtn" onclick="requestCode()">Email me a code</button>
+            </div>
+
+            <div id="loginStepCode" hidden>
+                <h2>Check your email</h2>
+                <p class="modal-sub">We sent a six-digit code to <strong id="loginEmailShown"></strong>.
+                   It expires in 10 minutes.</p>
+                <input type="text" id="loginCode" class="code-input" inputmode="numeric"
+                       pattern="[0-9]*" maxlength="6" placeholder="••••••"
+                       autocomplete="one-time-code" spellcheck="false">
+                <button type="button" class="btn modal-btn" id="verifyCodeBtn" onclick="verifyCode()">Log in</button>
+                <p class="modal-links">
+                    <a href="#" id="resendLink" onclick="return resendCode()">Resend code</a>
+                    <span>&middot;</span>
+                    <a href="#" onclick="return backToEmail()">Use a different email</a>
+                </p>
+            </div>
+
+            <p class="modal-error" id="loginError" hidden></p>
+        </div>
+    </div>
+
+    <script>
+        const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
+        let resendTimer = null;
+
+        function openLoginModal() {
+            document.getElementById('loginModal').hidden = false;
+            document.getElementById('loginEmail').focus();
+            return false; // Prevent the fallback link navigation
+        }
+        function closeLoginModal() {
+            document.getElementById('loginModal').hidden = true;
+            hideLoginError();
+        }
+        function showLoginError(msg) {
+            const el = document.getElementById('loginError');
+            el.textContent = msg;
+            el.hidden = false;
+        }
+        function hideLoginError() { document.getElementById('loginError').hidden = true; }
+
+        async function authPost(url, body) {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+                body: JSON.stringify(body)
+            });
+            return { ok: resp.ok, data: await resp.json().catch(() => ({})) };
+        }
+
+        async function requestCode() {
+            hideLoginError();
+            const email = document.getElementById('loginEmail').value.trim();
+            if (!email) { showLoginError('Please enter your email address.'); return; }
+            const btn = document.getElementById('sendCodeBtn');
+            btn.disabled = true; btn.textContent = 'Sending…';
+            const { ok, data } = await authPost('/auth/request-code', { email });
+            btn.disabled = false; btn.textContent = 'Email me a code';
+            if (!ok) { showLoginError(data.error || 'Something went wrong. Please try again.'); return; }
+            document.getElementById('loginEmailShown').textContent = email;
+            document.getElementById('loginStepEmail').hidden = true;
+            document.getElementById('loginStepCode').hidden = false;
+            document.getElementById('loginCode').value = '';
+            document.getElementById('loginCode').focus();
+            startResendCooldown(60);
+        }
+
+        async function verifyCode() {
+            hideLoginError();
+            const email = document.getElementById('loginEmail').value.trim();
+            const code = document.getElementById('loginCode').value.trim();
+            if (!/^\d{6}$/.test(code)) { showLoginError('Please enter the six-digit code.'); return; }
+            const btn = document.getElementById('verifyCodeBtn');
+            btn.disabled = true; btn.textContent = 'Checking…';
+            const { ok, data } = await authPost('/auth/verify-code', { email, code });
+            if (!ok) {
+                btn.disabled = false; btn.textContent = 'Log in';
+                showLoginError(data.error || 'Something went wrong. Please try again.');
+                return;
+            }
+            btn.textContent = 'Welcome!';
+            // Reload without the ?login=1 param so the modal doesn't reopen
+            window.location.href = window.location.pathname;
+        }
+
+        function resendCode() {
+            const link = document.getElementById('resendLink');
+            if (!link.classList.contains('disabled')) requestCode();
+            return false;
+        }
+        function backToEmail() {
+            hideLoginError();
+            document.getElementById('loginStepCode').hidden = true;
+            document.getElementById('loginStepEmail').hidden = false;
+            document.getElementById('loginEmail').focus();
+            return false;
+        }
+        function startResendCooldown(seconds) {
+            const link = document.getElementById('resendLink');
+            let left = seconds;
+            link.classList.add('disabled');
+            clearInterval(resendTimer);
+            const tick = () => {
+                link.textContent = left > 0 ? `Resend code (${left}s)` : 'Resend code';
+                if (left <= 0) { link.classList.remove('disabled'); clearInterval(resendTimer); }
+                left--;
+            };
+            tick();
+            resendTimer = setInterval(tick, 1000);
+        }
+
+        // Enter-key handling + close on overlay click / Escape
+        document.getElementById('loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') requestCode(); });
+        document.getElementById('loginCode').addEventListener('keydown', e => { if (e.key === 'Enter') verifyCode(); });
+        document.getElementById('loginModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeLoginModal(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLoginModal(); });
+
+        // Auto-open when redirected here for login (?login=1)
+        if (new URLSearchParams(window.location.search).get('login') === '1') {
+            openLoginModal();
+        }
+    </script>
+    {% endif %}
 
     <script>
         // Set current year in footer

@@ -17,9 +17,13 @@ services:
     environment:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (openssl rand -hex 32)}
       APP_BASE_URL: ${APP_BASE_URL:-https://app.slinkr.eduserver.au}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      # Passwordless login via Resend (empty key = codes printed to logs)
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Slinkr <login@slinkr.eduserver.au>}
+      AUTO_VERIFY_DOMAINS: ${AUTO_VERIFY_DOMAINS:-curtin.edu.au}
+      # Optional: pre-create the admin (logs in by email code; no password)
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       TRUST_PROXY: ${TRUST_PROXY:-1}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-1}
       RATELIMIT_STORAGE_URI: redis://redis:6379/0

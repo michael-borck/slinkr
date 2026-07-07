@@ -119,7 +119,8 @@ First user to register becomes an **admin** and is auto-verified. Subsequent use
 ```bash
 cp .env.example .env
 # Edit .env: set SECRET_KEY (openssl rand -hex 32), APP_BASE_URL,
-# and optionally ADMIN_USERNAME/ADMIN_EMAIL/ADMIN_PASSWORD for first-run bootstrap
+# RESEND_API_KEY + EMAIL_FROM for login emails, AUTO_VERIFY_DOMAINS,
+# and optionally ADMIN_EMAIL to pre-create the admin account
 docker compose up -d --build
 ```
 
@@ -127,7 +128,14 @@ The app listens on `127.0.0.1:8000` (via gunicorn) with data persisted in the
 `slinkr_data` volume (`/data` in the container, SQLite in WAL mode). A Redis
 sidecar provides shared rate-limit storage. Put Nginx or Caddy in front for
 HTTPS, keep `TRUST_PROXY=1`, and set `SESSION_COOKIE_SECURE=1` once HTTPS is
-live. After the first start, remove the `ADMIN_*` variables from `.env`.
+live.
+
+Login is passwordless: users enter their email, receive a six-digit code
+(sent via [Resend](https://resend.com)), and are logged in — accounts are
+created automatically on first login. Domains listed in `AUTO_VERIFY_DOMAINS`
+are verified immediately; everyone else needs admin approval in
+`/admin/users` before they can shorten links or run health checks. Without
+a `RESEND_API_KEY`, codes are printed to the container logs (dev mode).
 
 Existing TinyDB data (`slinkr_data.json`) is migrated into SQLite automatically
 on first start if present in the data directory.

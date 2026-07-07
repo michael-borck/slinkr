@@ -16,10 +16,13 @@ services:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (openssl rand -hex 32)}
       # Public URL used to build short links, e.g. https://links.example.com
       APP_BASE_URL: ${APP_BASE_URL:-http://127.0.0.1:8000}
-      # Optional: create the initial admin on first start (remove after first run)
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      # Passwordless login via Resend (empty key = codes printed to logs)
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Slinkr <login@slinkr.eduserver.au>}
+      AUTO_VERIFY_DOMAINS: ${AUTO_VERIFY_DOMAINS:-curtin.edu.au}
+      # Optional: pre-create the admin (logs in by email code; no password)
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       # Set to 1 when running behind a reverse proxy (nginx/caddy/traefik)
       TRUST_PROXY: ${TRUST_PROXY:-1}
       # Set to 1 once the site is served over HTTPS
