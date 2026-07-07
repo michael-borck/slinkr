@@ -1,0 +1,36 @@
+# Production compose file — pulls the published image from GHCR.
+# Usage on a VPS:
+#   curl -fsSL https://raw.githubusercontent.com/michael-borck/slinkr/main/docker-compose.prod.yml -o docker-compose.yml
+#   curl -fsSL https://raw.githubusercontent.com/michael-borck/slinkr/main/.env.example -o .env
+#   # edit .env, then:
+#   docker compose up -d
+services:
+  slinkr:
+    image: ghcr.io/michael-borck/slinkr:latest
+    container_name: slinkr
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      # Bind to localhost only; put nginx/caddy in front for HTTPS.
+      - "127.0.0.1:8000:8000"
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (openssl rand -hex 32)}
+      APP_BASE_URL: ${APP_BASE_URL:-https://app.slinkr.eduserver.au}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-1}
+      RATELIMIT_STORAGE_URI: redis://redis:6379/0
+    volumes:
+      - slinkr_data:/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: slinkr-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+volumes:
+  slinkr_data:
