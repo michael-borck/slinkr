@@ -42,7 +42,7 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 # Passwordless login (email codes via Resend)
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "") # Empty = dev mode (codes printed to logs)
-EMAIL_FROM = os.environ.get("EMAIL_FROM", "Slinkr <login@slinkr.eduserver.au>")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "Slinkr <login@slinkr.link>")
 # Users whose email domain is listed here are verified automatically on first login;
 # everyone else can log in but needs admin approval for shortening/checking.
 AUTO_VERIFY_DOMAINS = {

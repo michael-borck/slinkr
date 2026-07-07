@@ -16,10 +16,10 @@ services:
       - "127.0.0.1:8000:8000"
     environment:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (openssl rand -hex 32)}
-      APP_BASE_URL: ${APP_BASE_URL:-https://app.slinkr.eduserver.au}
+      APP_BASE_URL: ${APP_BASE_URL:-https://slinkr.link}
       # Passwordless login via Resend (empty key = codes printed to logs)
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EMAIL_FROM: ${EMAIL_FROM:-Slinkr <login@slinkr.eduserver.au>}
+      EMAIL_FROM: ${EMAIL_FROM:-Slinkr <login@slinkr.link>}
       AUTO_VERIFY_DOMAINS: ${AUTO_VERIFY_DOMAINS:-curtin.edu.au}
       # Optional: pre-create the admin (logs in by email code; no password)
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
