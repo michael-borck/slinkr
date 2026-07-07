@@ -1,0 +1,40 @@
+services:
+  slinkr:
+    # To deploy from GHCR instead of building locally, replace `build: .` with:
+    #   image: ghcr.io/<your-github-username>/slinkr:latest
+    build: .
+    container_name: slinkr
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      # Bind to localhost only; put nginx/caddy in front for HTTPS.
+      # Change to "8000:8000" if you want it directly exposed.
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Required: long random string, e.g. `openssl rand -hex 32`
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (openssl rand -hex 32)}
+      # Public URL used to build short links, e.g. https://links.example.com
+      APP_BASE_URL: ${APP_BASE_URL:-http://127.0.0.1:8000}
+      # Optional: create the initial admin on first start (remove after first run)
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Set to 1 when running behind a reverse proxy (nginx/caddy/traefik)
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Set to 1 once the site is served over HTTPS
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-0}
+      # Shared rate-limit storage across gunicorn workers
+      RATELIMIT_STORAGE_URI: redis://redis:6379/0
+    volumes:
+      - slinkr_data:/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: slinkr-redis
+    restart: unless-stopped
+    # Rate-limit counters only; no persistence needed
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+volumes:
+  slinkr_data:

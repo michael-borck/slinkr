@@ -1,0 +1,19 @@
+.git
+.gitignore
+.env
+*.md
+LICENSE
+__pycache__
+*.pyc
+.venv
+venv
+
+# Never bake local data / credentials into the image
+slinkr_data.json
+linky_data.json
+link_db.json
+uploads/
+
+# macOS cruft
+.DS_Store
+._*

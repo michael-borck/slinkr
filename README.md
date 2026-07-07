@@ -114,6 +114,42 @@ First user to register becomes an **admin** and is auto-verified. Subsequent use
 
 ## 🚀 Deployment
 
+### Docker (recommended)
+
+```bash
+cp .env.example .env
+# Edit .env: set SECRET_KEY (openssl rand -hex 32), APP_BASE_URL,
+# and optionally ADMIN_USERNAME/ADMIN_EMAIL/ADMIN_PASSWORD for first-run bootstrap
+docker compose up -d --build
+```
+
+The app listens on `127.0.0.1:8000` (via gunicorn) with data persisted in the
+`slinkr_data` volume (`/data` in the container, SQLite in WAL mode). A Redis
+sidecar provides shared rate-limit storage. Put Nginx or Caddy in front for
+HTTPS, keep `TRUST_PROXY=1`, and set `SESSION_COOKIE_SECURE=1` once HTTPS is
+live. After the first start, remove the `ADMIN_*` variables from `.env`.
+
+Existing TinyDB data (`slinkr_data.json`) is migrated into SQLite automatically
+on first start if present in the data directory.
+
+### Pull from GHCR
+
+Pushes to `main` (and `v*` tags) build a multi-arch image via GitHub Actions
+and publish it to GitHub Container Registry. On your VPS, edit
+`docker-compose.yml` to use the image instead of building:
+
+```yaml
+services:
+  slinkr:
+    image: ghcr.io/<your-github-username>/slinkr:latest
+```
+
+If the package is private, log in first:
+`echo $GH_PAT | docker login ghcr.io -u <username> --password-stdin`
+(PAT needs the `read:packages` scope.)
+
+### Manual
+
 * Use Gunicorn + Nginx or Caddy.
 * **Do not** run `app.py` with `debug=True` in production.
 * Swap TinyDB for PostgreSQL/SQLite for higher scale.
