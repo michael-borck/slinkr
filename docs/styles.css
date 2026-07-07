@@ -1,0 +1,321 @@
+/* Slinkr landing page — editorial paper/ink look with the app's emerald accent. */
+
+:root {
+  --paper: #f1f3ef;
+  --paper-deep: #e7eae4;
+  --ink: #1f2937;
+  --ink-soft: #4b5563;
+  --emerald: #059669;
+  --emerald-bright: #10b981;
+  --line: #d7dcd3;
+  --card: #f9faf8;
+  --radius: 10px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+h2 {
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 1.5rem;
+}
+
+a { color: var(--emerald); }
+
+/* ---- Top nav ---- */
+
+.topnav {
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.topnav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 60px;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-logo { width: 28px; height: 28px; }
+
+.topnav-links { display: flex; align-items: center; gap: 1.5rem; }
+.topnav-links a { color: var(--ink-soft); text-decoration: none; font-size: 0.95rem; }
+.topnav-links a:hover { color: var(--ink); }
+
+.nav-cta {
+  background: var(--emerald);
+  color: #fff !important;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.nav-cta:hover { background: var(--emerald-bright); }
+
+/* ---- Hero ---- */
+
+.hero { padding: 72px 0 88px; }
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 56px;
+  align-items: center;
+}
+
+.eyebrow {
+  font-size: 0.78rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--emerald); }
+
+.hero h1 {
+  font-size: clamp(2.4rem, 5vw, 3.6rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+  margin-bottom: 1.4rem;
+}
+.hero h1 em { font-style: italic; font-weight: 600; color: var(--emerald); }
+
+.sub { font-size: 1.08rem; color: var(--ink-soft); max-width: 34rem; margin-bottom: 2.2rem; }
+
+/* ---- CTA block ---- */
+
+.btn {
+  display: inline-block;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-primary {
+  background: var(--emerald);
+  color: #fff;
+  padding: 14px 30px;
+  font-size: 1.05rem;
+}
+.btn-primary:hover { background: var(--emerald-bright); }
+
+.btn-ghost {
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 13px 24px;
+  font-size: 1rem;
+  margin-left: 12px;
+}
+.btn-ghost:hover { border-color: var(--ink-soft); }
+
+.privacy-tag {
+  margin-top: 2.4rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+  max-width: 30rem;
+}
+
+/* ---- Hero demo (shorten mock + QR) ---- */
+
+/* minmax(0,1fr) keeps the unbreakable demo URL from inflating the track */
+.hero-demo { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+
+.demo-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: 0 24px 60px rgba(31, 41, 55, 0.16);
+}
+
+.demo-row { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+
+.demo-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--ink-soft);
+  flex-shrink: 0;
+  width: 52px;
+}
+.demo-label-accent { color: var(--emerald); }
+
+.demo-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0; /* allow the nowrap URL to shrink inside the flex row */
+}
+
+/* The short URL is the payoff — never truncate it; the chip wraps instead */
+.demo-url-short { color: var(--ink); font-weight: 600; font-size: 0.9rem; flex-shrink: 0; }
+.demo-short { flex-wrap: wrap; }
+
+.demo-arrow { text-align: left; padding: 6px 0 6px 20px; color: var(--emerald); font-weight: 700; }
+
+.demo-copy {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--emerald);
+  background: rgba(16, 185, 129, 0.12);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.demo-qr {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 22px;
+}
+.demo-qr img { width: 104px; height: 104px; border-radius: 6px; }
+.demo-qr p { font-size: 0.9rem; color: var(--ink-soft); }
+
+/* ---- Sections ---- */
+
+.steps { padding: 72px 24px; }
+
+.grid { display: grid; gap: 24px; }
+.grid.four { grid-template-columns: repeat(4, 1fr); }
+.grid.three { grid-template-columns: repeat(3, 1fr); }
+.grid.two { grid-template-columns: repeat(2, 1fr); }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 28px;
+}
+.card h3 { margin-bottom: 0.6rem; font-size: 1.15rem; }
+.card p { color: var(--ink-soft); font-size: 0.97rem; }
+
+.card-num {
+  font-size: 0.8rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--emerald);
+  font-weight: 700;
+  margin-bottom: 0.8rem;
+}
+
+.providers-band {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 72px 0;
+}
+.providers-band h2 { color: var(--paper); }
+.providers-band .card.plain {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.providers-band .card.plain h3 { color: var(--paper); }
+.providers-band .card.plain h3::after { content: ""; display: block; width: 28px; height: 2px; background: var(--emerald-bright); margin-top: 8px; }
+.providers-band .card.plain p { color: rgba(241, 243, 239, 0.75); }
+.providers-band code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.privacy { padding: 80px 24px; }
+
+.privacy-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+.privacy-grid p { color: var(--ink-soft); font-size: 1.05rem; }
+.cta-inline { margin-top: 1.8rem; }
+
+.privacy-list { list-style: none; }
+.privacy-list li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+.privacy-list li:first-child { border-top: 1px solid var(--line); }
+.privacy-list strong { color: var(--ink); }
+
+.audience { padding: 0 24px 80px; }
+
+/* ---- Footer ---- */
+
+.footer { border-top: 1px solid var(--line); padding: 28px 0; }
+
+.footer-inner { display: flex; gap: 1.8rem; align-items: center; font-size: 0.9rem; }
+.footer-inner a { color: var(--ink-soft); text-decoration: none; }
+.footer-inner a:hover { color: var(--ink); }
+.copyright { margin-left: auto; color: var(--ink-soft); }
+
+/* ---- Responsive ---- */
+
+@media (max-width: 1000px) {
+  .grid.four { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 860px) {
+  .hero { padding: 48px 0 56px; }
+  .hero-grid, .privacy-grid { grid-template-columns: 1fr; }
+  .grid.four, .grid.three, .grid.two { grid-template-columns: 1fr; }
+  .btn-ghost { margin-left: 0; margin-top: 12px; display: inline-block; }
+  .footer-inner { flex-wrap: wrap; }
+  .copyright { margin-left: 0; width: 100%; }
+}
+
+@media (max-width: 560px) {
+  .container { padding: 0 18px; }
+  .topnav-links { gap: 0.85rem; }
+  .topnav-links a { font-size: 0.88rem; }
+  .nav-cta { padding: 7px 12px; }
+  .brand { font-size: 1.05rem; gap: 8px; }
+  .brand-logo { width: 24px; height: 24px; }
+  .demo-card { padding: 18px; }
+  .demo-label { width: 44px; }
+  .demo-url-short { font-size: 0.8rem; }
+  .demo-qr { flex-direction: row; padding: 14px 18px; }
+  .demo-qr img { width: 88px; height: 88px; }
+}

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Slinkr — Stretch. Shrink. Share.</title>
+  <meta name="description" content="Slinkr is a sleek, self-hosted URL toolkit: shorten links, expand mystery URLs, generate QR codes with your logo, and check link health — all in one place." />
+  <link rel="icon" type="image/png" href="img/favicon-16.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <nav class="topnav">
+    <div class="container topnav-inner">
+      <span class="brand"><img src="img/slinkr-color-512.png" alt="" class="brand-logo" />Slinkr</span>
+      <div class="topnav-links">
+        <a href="#features">Features</a>
+        <a href="https://github.com/michael-borck/slinkr">GitHub</a>
+        <a href="https://app.slinkr.eduserver.au" class="nav-cta">Open App</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero" id="top">
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">The friendly URL toolkit</p>
+        <h1>Stretch. Shrink. <em>Share.</em></h1>
+        <p class="sub">Slinkr turns unwieldy links into short, shareable ones — and does
+          the reverse, too. Expand mystery URLs before you click, generate QR codes
+          with your own logo, and check whether a link is alive, redirected, or broken.
+          One clean page, four tools.</p>
+
+        <div class="cta-block">
+          <a class="btn btn-primary" href="https://app.slinkr.eduserver.au">Open Slinkr — it's free</a>
+          <a class="btn btn-ghost" href="https://app.slinkr.eduserver.au/register">Create an account</a>
+        </div>
+
+        <p class="privacy-tag">No account needed for QR codes and URL expansion.
+          Register to shorten links and run health checks.</p>
+      </div>
+
+      <div class="hero-demo" aria-label="Example of shortening a link">
+        <div class="demo-card">
+          <div class="demo-row demo-long">
+            <span class="demo-label">Long</span>
+            <span class="demo-url">https://example.com/campaigns/2026/semester-two/enrolment-guide?utm_source=…</span>
+          </div>
+          <div class="demo-arrow">↓</div>
+          <div class="demo-row demo-short">
+            <span class="demo-label demo-label-accent">Short</span>
+            <span class="demo-url demo-url-short">app.slinkr.eduserver.au/x7Yk2Pq</span>
+            <span class="demo-copy">Copied ✓</span>
+          </div>
+        </div>
+        <div class="demo-qr">
+          <img src="img/qr-app.png" alt="QR code linking to the Slinkr app" />
+          <p>Real QR — scan to try Slinkr</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="container steps" id="features">
+    <h2>Four tools, one page</h2>
+    <div class="grid four">
+      <div class="card">
+        <div class="card-num">Shrink</div>
+        <h3>Shorten URLs</h3>
+        <p>Turn long, fragile links into short ones that fit in a slide, an email,
+          or a printed handout — and never break mid-wrap again.</p>
+      </div>
+      <div class="card">
+        <div class="card-num">Stretch</div>
+        <h3>Expand URLs</h3>
+        <p>Been handed a shortened mystery link? Paste it in and see exactly where
+          it leads before you click. No account required.</p>
+      </div>
+      <div class="card">
+        <div class="card-num">Share</div>
+        <h3>QR codes with your logo</h3>
+        <p>Generate crisp, scannable QR codes for any URL — optionally with your
+          own logo in the centre. Download as PNG, free for everyone.</p>
+      </div>
+      <div class="card">
+        <div class="card-num">Check</div>
+        <h3>Link health checks</h3>
+        <p>Is it alive, redirected, or dead? Check any link's HTTP status and final
+          destination before you share it with a hundred people.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="providers-band">
+    <div class="container">
+      <h2>Small, honest, self-hosted</h2>
+      <div class="grid three">
+        <div class="card plain">
+          <h3>Your links, your server</h3>
+          <p>Slinkr runs on our own infrastructure — not a link-tracking service.
+            No ads, no click profiling, no selling your audience to anyone.</p>
+        </div>
+        <div class="card plain">
+          <h3>Spam-resistant by design</h3>
+          <p>Shortening requires a verified account, approved by a human admin.
+            That keeps Slinkr links trustworthy — a short link from here isn't
+            hiding anything nasty.</p>
+        </div>
+        <div class="card plain">
+          <h3>Open source</h3>
+          <p>MIT-licensed Flask app you can read, audit, or run yourself — a
+            Docker image is one <code>docker compose up</code> away.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container privacy">
+    <div class="privacy-grid">
+      <div>
+        <h2>Try it without signing up</h2>
+        <p>Two of the four tools are open to everyone, no account needed. If you
+          like what you see, registration takes thirty seconds — and once an admin
+          verifies you, the whole toolkit is yours.</p>
+        <p class="cta-inline"><a class="btn btn-primary" href="https://app.slinkr.eduserver.au">Try Slinkr now</a></p>
+      </div>
+      <ul class="privacy-list">
+        <li><strong>Free, no account:</strong> QR code generation and URL expansion.</li>
+        <li><strong>Free, verified account:</strong> URL shortening and link health checks.</li>
+        <li><strong>Human-verified:</strong> an admin approves each account, keeping short links clean.</li>
+        <li><strong>No lock-in:</strong> open source — take your links and self-host any time.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="container audience">
+    <div class="grid two">
+      <div class="card">
+        <h3>For classrooms &amp; courses</h3>
+        <p>Put a short link on a slide students can actually type, drop a QR code
+          on the lecture handout, and check that every reading-list link still
+          works before semester starts.</p>
+      </div>
+      <div class="card">
+        <h3>For everyday sharing</h3>
+        <p>Newsletters, posters, social posts, group chats — anywhere a 200-character
+          URL looks terrible, Slinkr gives you a short one and a QR code to match.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <a href="https://app.slinkr.eduserver.au">Open App</a>
+      <a href="https://github.com/michael-borck/slinkr">GitHub</a>
+      <span class="copyright">MIT © Michael Borck</span>
+    </div>
+  </footer>
+
+</body>
+</html>
