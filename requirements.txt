@@ -1,11 +1,14 @@
 # Flask Framework and Extensions
-Flask>=2.0 # Or specify a more recent version if needed
+Flask>=2.0
 Flask-Login>=0.6
 Flask-Bcrypt>=1.0
-Flask-Limiter>=2.0 # Or specify a more recent version
+Flask-Limiter>=2.0
+Flask-WTF>=1.2 # CSRF protection
 
-# Database
-tinydb>=4.0
+# Database: stdlib sqlite3 (no external package needed)
+
+# Rate-limit storage backend (used when RATELIMIT_STORAGE_URI=redis://...)
+redis>=5.0
 
 # HTTP Requests
 requests>=2.25
@@ -16,7 +19,5 @@ qrcode[pil]>=7.0 # Using the 'pil' extra installs Pillow automatically
 # Utility
 shortuuid>=1.0
 
-# Note: Pillow is installed as a dependency of qrcode[pil]
-# You could list Pillow explicitly if desired, but it's usually handled by the extra.
-# Pillow>=9.0
-
+# Production WSGI server
+gunicorn>=21.0

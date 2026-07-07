@@ -1,4 +1,4 @@
-i{% extends "base.html" %} {# Extends the updated base.html #}
+{% extends "base.html" %} {# Extends the updated base.html #}
 
 {% block title %}Slinkr Hub{% endblock %}
 
@@ -173,10 +173,11 @@ i{% extends "base.html" %} {# Extends the updated base.html #}
 
         const selectedAction = document.querySelector('input[name="action"]:checked').value;
         const urlValue = urlInput.value;
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         let endpoint = '';
         let requestOptions = {
             method: 'POST',
-            headers: {},
+            headers: { 'X-CSRFToken': csrfToken },
             // Body will be set based on action
         };
         let isFormData = false;

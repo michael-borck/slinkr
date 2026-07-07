@@ -1,23 +1,28 @@
 import os
 import io
 import base64
+import ipaddress
+import json
+import secrets
+import socket
+import sqlite3
 import shortuuid
 import requests
 import datetime # Needed for user creation timestamp
 
 from flask import (
     Flask, request, jsonify, render_template, redirect, url_for,
-    send_file, Response, flash, session, abort
+    send_file, Response, flash, session, abort, g
 )
 from flask_login import (
     LoginManager, UserMixin, login_user, logout_user, login_required,
     current_user
 )
 from flask_bcrypt import Bcrypt
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
-from tinydb import TinyDB, Query, where
 from urllib.parse import urlparse
 import qrcode
 from qrcode.image.styledpil import StyledPilImage
@@ -27,48 +32,157 @@ from PIL import Image
 
 # --- Configuration ---
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5000") # Use env var or default
-DB_FILE = 'slinkr_data.json' # Main DB file
-LOGO_UPLOAD_FOLDER = 'uploads'
+DATA_DIR = os.environ.get("DATA_DIR", ".") # Directory for DB + uploads (mount a volume here in Docker)
+DB_FILE = os.path.join(DATA_DIR, 'slinkr.db') # SQLite database
+LEGACY_TINYDB_FILE = os.path.join(DATA_DIR, 'slinkr_data.json') # Old TinyDB file (migrated on first run)
+LOGO_UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-SECRET_KEY = os.environ.get("SECRET_KEY", "a_very_secret_key_change_me") # CHANGE FOR PRODUCTION!
+
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    # Fall back to an ephemeral random key: sessions won't survive a restart,
+    # but nobody can forge session cookies with a known default key.
+    SECRET_KEY = secrets.token_hex(32)
+    print("WARNING: SECRET_KEY not set; using an ephemeral key. "
+          "All sessions will be invalidated on restart. Set SECRET_KEY in production.")
 
 # --- Initialization ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
 app.config['UPLOAD_FOLDER'] = LOGO_UPLOAD_FOLDER
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['WTF_CSRF_TIME_LIMIT'] = None # Token valid for the whole session (page may stay open a long time)
+if os.environ.get("SESSION_COOKIE_SECURE", "0") == "1": # Enable when served over HTTPS
+    app.config['SESSION_COOKIE_SECURE'] = True
+    app.config['REMEMBER_COOKIE_SECURE'] = True
+os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Database
-db = TinyDB(DB_FILE)
-links_table = db.table('links')
-users_table = db.table('users')
+# Respect X-Forwarded-* headers when running behind a reverse proxy (nginx/caddy/traefik).
+# Required for correct client IPs in rate limiting. Only enable when a trusted proxy fronts the app.
+if os.environ.get("TRUST_PROXY", "0") == "1":
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+# --- Database (SQLite) ---
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    is_verified INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    short_code TEXT UNIQUE NOT NULL,
+    long_url TEXT NOT NULL,
+    user_id INTEGER,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_links_long_url ON links(long_url);
+"""
+
+def _connect():
+    """Opens a new SQLite connection with sensible defaults."""
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 10000")
+    return conn
+
+def get_db():
+    """Returns the per-request database connection, opening it if needed."""
+    if '_db' not in g:
+        g._db = _connect()
+    return g._db
+
+@app.teardown_appcontext
+def close_db(exc):
+    db = g.pop('_db', None)
+    if db is not None:
+        db.close()
+
+def migrate_from_tinydb(conn):
+    """One-time import of data from the old TinyDB JSON file, preserving IDs."""
+    if not os.path.exists(LEGACY_TINYDB_FILE):
+        return
+    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0:
+        return # Already have data; never overwrite
+    try:
+        with open(LEGACY_TINYDB_FILE) as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        print(f"WARNING: could not read legacy TinyDB file for migration: {e}")
+        return
+    for doc_id, u in (data.get('users') or {}).items():
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, username, email, password_hash, is_admin, is_verified, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (int(doc_id), u.get('username'), u.get('email'), u.get('password_hash'),
+             int(bool(u.get('is_admin'))), int(bool(u.get('is_verified'))),
+             u.get('created_at') or utcnow_iso())
+        )
+    for doc_id, l in (data.get('links') or {}).items():
+        conn.execute(
+            "INSERT OR IGNORE INTO links (id, short_code, long_url, user_id, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (int(doc_id), l.get('short_code'), l.get('long_url'), l.get('user_id'),
+             l.get('created_at') or utcnow_iso())
+        )
+    conn.commit()
+    migrated = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    if migrated:
+        print(f"Migrated {migrated} user(s) and their links from {LEGACY_TINYDB_FILE} to {DB_FILE}.")
+
+def utcnow_iso():
+    """Current UTC time as an ISO-8601 string (timezone-aware)."""
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+def init_db():
+    conn = _connect()
+    conn.execute("PRAGMA journal_mode = WAL") # Safe concurrent reads + single-writer across processes
+    conn.executescript(SCHEMA)
+    migrate_from_tinydb(conn)
+    conn.commit()
+    conn.close()
+
+init_db()
 
 # Security & Auth
 bcrypt = Bcrypt(app)
+csrf = CSRFProtect(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login' # Redirect to /login if @login_required fails
 login_manager.login_message_category = 'info' # Flash message category
 
-# Rate Limiting (adjust limits as needed)
+# Used to equalize login timing when the username doesn't exist (prevents
+# user enumeration via response-time differences).
+DUMMY_PASSWORD_HASH = bcrypt.generate_password_hash("timing-equalization-dummy").decode('utf-8')
+
+# Rate Limiting (set RATELIMIT_STORAGE_URI=redis://host:6379/0 in production
+# so limits are shared across workers and survive restarts)
 limiter = Limiter(
     get_remote_address,
     app=app,
     default_limits=["200 per day", "50 per hour", "10 per minute"],
-    storage_uri="memory://", # Use redis in production for better scaling
+    storage_uri=os.environ.get("RATELIMIT_STORAGE_URI", "memory://"),
 )
 
 
 # --- User Model ---
 class User(UserMixin):
     """Represents a user in the system for Flask-Login."""
-    def __init__(self, user_data):
-        self.id = user_data.doc_id # Use TinyDB document ID as user ID
-        self.username = user_data.get('username')
-        self.email = user_data.get('email')
-        self.password_hash = user_data.get('password_hash')
-        self.is_admin = user_data.get('is_admin', False)
-        self.is_verified = user_data.get('is_verified', False)
-        self.created_at = user_data.get('created_at')
+    def __init__(self, user_row):
+        self.id = user_row['id']
+        self.username = user_row['username']
+        self.email = user_row['email']
+        self.password_hash = user_row['password_hash']
+        self.is_admin = bool(user_row['is_admin'])
+        self.is_verified = bool(user_row['is_verified'])
+        self.created_at = user_row['created_at']
 
     def verify_password(self, password):
         """Checks if the provided password matches the stored hash."""
@@ -84,9 +198,9 @@ class User(UserMixin):
 def load_user(user_id):
     """Loads a user object from the database given their ID."""
     try:
-        user_doc = users_table.get(doc_id=int(user_id))
-        if user_doc:
-            return User(user_doc)
+        row = get_db().execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        if row:
+            return User(row)
     except ValueError: # Handle cases where user_id might not be an integer
         pass
     return None
@@ -108,6 +222,21 @@ def is_valid_url(url):
     except ValueError:
         return False
     return False
+
+def is_public_url(url):
+    """Resolves the URL's host and rejects private/loopback/link-local/reserved
+    addresses so the link checker can't be used to probe internal services (SSRF)."""
+    try:
+        hostname = urlparse(url).hostname
+        if not hostname:
+            return False
+        for family, _, _, _, sockaddr in socket.getaddrinfo(hostname, None):
+            ip = ipaddress.ip_address(sockaddr[0])
+            if not ip.is_global:
+                return False
+        return True
+    except (socket.gaierror, ValueError, OSError):
+        return False
 
 def allowed_file(filename):
     """Checks if the uploaded file extension is allowed."""
@@ -217,15 +346,13 @@ def index():
 @limiter.limit("100 per minute") # Limit redirection hits per IP
 def redirect_to_long_url(short_code):
     """Redirects a short code to its corresponding long URL."""
-    Link = Query()
-    result = links_table.search(Link.short_code == short_code)
+    row = get_db().execute("SELECT long_url FROM links WHERE short_code = ?", (short_code,)).fetchone()
 
-    if result:
-        long_url = result[0]['long_url']
+    if row:
+        long_url = row['long_url']
         # Ensure the URL has a scheme for proper browser redirection
         if not urlparse(long_url).scheme:
              long_url = "http://" + long_url # Default to http if missing
-        print(f"Redirecting {short_code} to {long_url}")
         # Consider adding click tracking here later if needed
         return redirect(long_url, code=302) # Use 302 for temporary redirect
     else:
@@ -239,7 +366,8 @@ def redirect_to_long_url(short_code):
 @limiter.limit("5 per minute") # Limit shortening attempts per IP
 @verification_required # Requires login and verification (or admin)
 def api_shorten():
-    """API endpoint to shorten a URL. Requires verified account."""
+    """API endpoint to shorten a URL. Requires verified account.
+    Browser clients must send the CSRF token in the X-CSRFToken header."""
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid request body"}), 400
@@ -256,33 +384,32 @@ def api_shorten():
     elif not is_valid_url(long_url): # Check full validity if scheme exists or was added
         return jsonify({"error": "Invalid URL format"}), 400
 
-
+    db = get_db()
     # Check if this exact URL already exists
-    Link = Query()
-    existing = links_table.search(Link.long_url == long_url)
+    existing = db.execute("SELECT short_code FROM links WHERE long_url = ?", (long_url,)).fetchone()
     if existing:
-        short_code = existing[0]['short_code']
+        short_code = existing['short_code']
     else:
-        # Generate a unique short code
+        # Generate a unique short code; UNIQUE constraint guards against races
         while True:
             short_code = shortuuid.uuid()[:7] # Generate a 7-character short code
-            if not links_table.contains(Query().short_code == short_code):
-                break # Found a unique code
-        # Store the new mapping with user association and timestamp
-        links_table.insert({
-            'short_code': short_code,
-            'long_url': long_url,
-            'user_id': current_user.id, # Associate link with the logged-in user
-            'created_at': datetime.datetime.utcnow().isoformat() # Store creation time
-        })
+            try:
+                db.execute(
+                    "INSERT INTO links (short_code, long_url, user_id, created_at) VALUES (?, ?, ?, ?)",
+                    (short_code, long_url, current_user.id, utcnow_iso())
+                )
+                db.commit()
+                break
+            except sqlite3.IntegrityError:
+                continue # Collision — try another code
 
     # Construct the full short URL
     short_url = f"{APP_BASE_URL}/{short_code}"
     return jsonify({"short_url": short_url})
 
 @app.route('/api/expand', methods=['POST'])
+@csrf.exempt # Public, unauthenticated endpoint — safe to call without a token (e.g. curl)
 @limiter.limit("30 per minute") # Allow more expands than shortens
-# No verification required by default for expanding
 def api_expand():
     """API endpoint to expand a Slinkr short URL."""
     data = request.get_json()
@@ -312,17 +439,16 @@ def api_expand():
          return jsonify({"error": "Could not extract short code from URL"}), 400
 
     # Find the corresponding long URL in the database
-    Link = Query()
-    result = links_table.search(Link.short_code == short_code)
+    row = get_db().execute("SELECT long_url FROM links WHERE short_code = ?", (short_code,)).fetchone()
 
-    if result:
-        return jsonify({"original_url": result[0]['long_url']})
+    if row:
+        return jsonify({"original_url": row['long_url']})
     else:
         return jsonify({"error": "Short URL not found"}), 404
 
 @app.route('/api/qr', methods=['POST'])
+@csrf.exempt # Public, unauthenticated endpoint — safe to call without a token (e.g. curl)
 @limiter.limit("15 per minute") # Limit QR generation rate
-# No verification required by default for QR codes
 def api_qr():
     """API endpoint to generate a QR code from a URL, optionally with a logo."""
     url = request.form.get('url')
@@ -380,7 +506,8 @@ def api_qr():
 @limiter.limit("10 per minute") # Stricter limit for external requests
 @verification_required # Requires login and verification (or admin)
 def api_check():
-    """API endpoint to check link status. Requires verified account."""
+    """API endpoint to check link status. Requires verified account.
+    Browser clients must send the CSRF token in the X-CSRFToken header."""
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid request body"}), 400
@@ -398,6 +525,10 @@ def api_check():
     # Final validation after potentially adding scheme
     if not is_valid_url(url_to_check):
          return jsonify({"error": "Invalid URL format"}), 400
+
+    # Block requests to internal/private addresses (SSRF protection)
+    if not is_public_url(url_to_check):
+        return jsonify({"error": "URL host is not publicly reachable", "status_indicator": "🚫"}), 400
 
     # Perform the HTTP request to check the URL status
     try:
@@ -483,14 +614,15 @@ def register():
              flash('Invalid email address format.', 'danger')
              error = True
 
-        # --- Uniqueness Check ---
+        db = get_db()
+
+        # --- Uniqueness Check (single generic message to limit account enumeration) ---
         if not error:
-            UserQuery = Query()
-            if users_table.search(UserQuery.username == username):
-                flash('Username already exists. Please choose another.', 'danger')
-                error = True
-            if users_table.search(UserQuery.email == email):
-                flash('Email address already registered. Please use another.', 'danger')
+            taken = db.execute(
+                "SELECT 1 FROM users WHERE username = ? OR email = ?", (username, email)
+            ).fetchone()
+            if taken:
+                flash('That username or email is not available. Please choose another.', 'danger')
                 error = True
 
         # --- Proceed if no errors ---
@@ -499,17 +631,23 @@ def register():
             hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
             # Determine if this is the very first user
-            is_first_user = users_table.count(UserQuery.username.exists()) == 0
+            is_first_user = db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
 
             # Insert new user into the database
-            users_table.insert({
-                'username': username,
-                'email': email,
-                'password_hash': hashed_password,
-                'is_admin': is_first_user, # First user automatically becomes admin
-                'is_verified': is_first_user, # First user is automatically verified
-                'created_at': datetime.datetime.utcnow().isoformat() # Record creation time
-            })
+            try:
+                db.execute(
+                    "INSERT INTO users (username, email, password_hash, is_admin, is_verified, created_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    (username, email, hashed_password,
+                     int(is_first_user), # First user automatically becomes admin
+                     int(is_first_user), # First user is automatically verified
+                     utcnow_iso())
+                )
+                db.commit()
+            except sqlite3.IntegrityError:
+                # Race with a concurrent registration using the same username/email
+                flash('That username or email is not available. Please choose another.', 'danger')
+                return render_template('register.html')
 
             # Provide feedback to the user
             if is_first_user:
@@ -538,12 +676,11 @@ def login():
         remember = True if request.form.get('remember') else False # Check if "remember me" is ticked
 
         # Find user by username in the database
-        UserQuery = Query()
-        user_doc = users_table.get(UserQuery.username == username)
+        user_row = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
 
         # Check if user exists and password is correct
-        if user_doc:
-            user = User(user_doc) # Create User object from database data
+        if user_row:
+            user = User(user_row) # Create User object from database data
             if user.verify_password(password):
                 # Password matches, log the user in
                 login_user(user, remember=remember)
@@ -560,7 +697,9 @@ def login():
                 # Password incorrect
                 flash('Login Unsuccessful. Please check username and password.', 'danger')
         else:
-            # User not found
+            # User not found — still run a hash check so response timing
+            # doesn't reveal whether the username exists
+            bcrypt.check_password_hash(DUMMY_PASSWORD_HASH, password or '')
             flash('Login Unsuccessful. Please check username and password.', 'danger')
 
     # Handle GET request (show the login form)
@@ -580,19 +719,19 @@ def logout():
 @admin_required # Uses custom decorator for admin access
 def admin_users():
     """Displays list of users for admin management."""
-    all_users_data = users_table.all()
-    # Convert raw data to list of dicts, adding the document ID as 'id'
-    users = [dict(u, **{'id': u.doc_id}) for u in all_users_data]
-    # Sort users, e.g., by username (case-insensitive)
-    users.sort(key=lambda x: x['username'].lower())
+    rows = get_db().execute(
+        "SELECT * FROM users ORDER BY LOWER(username)"
+    ).fetchall()
+    users = [dict(r) for r in rows]
     return render_template('admin_users.html', users=users)
 
 @app.route('/admin/verify/<int:user_id>', methods=['POST'])
 @admin_required
 def admin_verify_user(user_id):
     """Admin action to toggle user verification status."""
-    user_doc = users_table.get(doc_id=user_id)
-    if not user_doc:
+    db = get_db()
+    user_row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user_row:
         flash('User not found.', 'danger')
         return redirect(url_for('admin_users'))
 
@@ -602,19 +741,21 @@ def admin_verify_user(user_id):
          return redirect(url_for('admin_users'))
 
     # Toggle verification status
-    new_status = not user_doc.get('is_verified', False)
-    users_table.update({'is_verified': new_status}, doc_ids=[user_id])
+    new_status = 0 if user_row['is_verified'] else 1
+    db.execute("UPDATE users SET is_verified = ? WHERE id = ?", (new_status, user_id))
+    db.commit()
 
     action = "verified" if new_status else "unverified"
-    flash(f'User {user_doc["username"]} has been {action}.', 'success')
+    flash(f'User {user_row["username"]} has been {action}.', 'success')
     return redirect(url_for('admin_users'))
 
 @app.route('/admin/delete/<int:user_id>', methods=['POST'])
 @admin_required
 def admin_delete_user(user_id):
     """Admin action to delete a user."""
-    user_doc = users_table.get(doc_id=user_id)
-    if not user_doc:
+    db = get_db()
+    user_row = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user_row:
         flash('User not found.', 'danger')
         return redirect(url_for('admin_users'))
 
@@ -623,12 +764,11 @@ def admin_delete_user(user_id):
          flash('Admin cannot delete their own account.', 'warning')
          return redirect(url_for('admin_users'))
 
-    # Consider deleting associated links or reassigning them (more complex)
-    # For now, just delete the user document
-    username = user_doc["username"]
-    users_table.remove(doc_ids=[user_id])
-    # Also remove links associated with the deleted user (optional cleanup)
-    links_table.remove(where('user_id') == user_id)
+    username = user_row["username"]
+    db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    # Also remove links associated with the deleted user
+    db.execute("DELETE FROM links WHERE user_id = ?", (user_id,))
+    db.commit()
 
     flash(f'User {username} and their associated links have been deleted.', 'success')
     return redirect(url_for('admin_users'))
@@ -641,6 +781,14 @@ def about():
     return render_template('about.html', base_url=APP_BASE_URL)
 
 # --- Error Handlers ---
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    """Handles missing/invalid CSRF tokens."""
+    if request.path.startswith('/api/'):
+        return jsonify({"error": f"CSRF validation failed: {e.description}"}), 400
+    flash("Your session expired or the form was invalid. Please try again.", "warning")
+    return redirect(request.referrer or url_for('index'))
+
 @app.errorhandler(404)
 def page_not_found(e):
     """Handles 404 Not Found errors."""
@@ -672,26 +820,54 @@ def internal_server_error(e):
      # Log the error for debugging purposes
      # Be careful not to leak sensitive info in production logs
      print(f"Internal Server Error encountered: {e}")
-     # Optionally log the full traceback in production if needed
-     # import traceback
-     # print(traceback.format_exc())
 
      flash("An unexpected internal error occurred. Please try again later.", "danger")
      return render_template('500.html', base_url=APP_BASE_URL, error=e), 500
 
 
+# --- Admin Bootstrap (non-interactive, for Docker/production) ---
+def bootstrap_admin_from_env():
+    """Creates the initial admin user from ADMIN_USERNAME / ADMIN_EMAIL /
+    ADMIN_PASSWORD environment variables if no admin exists yet.
+    (Alternatively, the first user to register via the web UI becomes admin.)"""
+    username = os.environ.get("ADMIN_USERNAME")
+    email = os.environ.get("ADMIN_EMAIL")
+    password = os.environ.get("ADMIN_PASSWORD")
+    if not (username and email and password):
+        return
+    conn = _connect()
+    try:
+        if conn.execute("SELECT 1 FROM users WHERE is_admin = 1").fetchone():
+            return
+        if len(password) < 8:
+            print("WARNING: ADMIN_PASSWORD must be at least 8 characters; admin not created.")
+            return
+        conn.execute(
+            "INSERT INTO users (username, email, password_hash, is_admin, is_verified, created_at)"
+            " VALUES (?, ?, ?, 1, 1, ?)",
+            (username, email, bcrypt.generate_password_hash(password).decode('utf-8'), utcnow_iso())
+        )
+        conn.commit()
+        print(f"Admin user '{username}' created from environment variables.")
+    except sqlite3.IntegrityError:
+        pass # Another worker created it first — fine
+    finally:
+        conn.close()
+
+bootstrap_admin_from_env()
+
 # --- Run the App ---
 if __name__ == '__main__':
     # --- Initial Admin User Creation (Command-line prompt if none exist) ---
     # This runs only when the script is executed directly (python app.py)
-    # Checks if an admin user already exists in the database
-    if not users_table.contains(Query().is_admin == True):
+    conn = _connect()
+    if not conn.execute("SELECT 1 FROM users WHERE is_admin = 1").fetchone():
          print("------------------------------------------")
          print("No admin user found. Creating one now...")
          print("------------------------------------------")
          while True:
             admin_username = input("Enter admin username: ").strip()
-            if users_table.contains(Query().username == admin_username):
+            if conn.execute("SELECT 1 FROM users WHERE username = ?", (admin_username,)).fetchone():
                 print("Username already exists. Try again.")
             elif not admin_username:
                  print("Username cannot be empty. Try again.")
@@ -699,7 +875,7 @@ if __name__ == '__main__':
                 break
          while True:
             admin_email = input("Enter admin email: ").strip()
-            if users_table.contains(Query().email == admin_email):
+            if conn.execute("SELECT 1 FROM users WHERE email = ?", (admin_email,)).fetchone():
                 print("Email already exists. Try again.")
             elif '@' not in admin_email or '.' not in admin_email.split('@')[-1]:
                  print("Invalid email format. Try again.")
@@ -718,27 +894,24 @@ if __name__ == '__main__':
 
          # Hash the password and insert the admin user
          hashed_password = bcrypt.generate_password_hash(admin_password).decode('utf-8')
-         users_table.insert({
-            'username': admin_username,
-            'email': admin_email,
-            'password_hash': hashed_password,
-            'is_admin': True,
-            'is_verified': True, # Admin is auto-verified
-            'created_at': datetime.datetime.utcnow().isoformat()
-         })
+         conn.execute(
+            "INSERT INTO users (username, email, password_hash, is_admin, is_verified, created_at)"
+            " VALUES (?, ?, ?, 1, 1, ?)",
+            (admin_username, admin_email, hashed_password, utcnow_iso())
+         )
+         conn.commit()
          print("------------------------------------------")
          print(f"Admin user '{admin_username}' created and verified successfully.")
          print("------------------------------------------")
+    conn.close()
 
     # --- Start Flask Development Server ---
     # Use 0.0.0.0 to make it accessible on the local network
-    # Debug=True enables auto-reloading and detailed error pages (disable in production)
     # Use environment variables for production configuration (host, port, debug)
     run_host = os.environ.get("FLASK_RUN_HOST", "0.0.0.0")
     run_port = int(os.environ.get("FLASK_RUN_PORT", 5000))
-    # Use FLASK_DEBUG=0 or FLASK_DEBUG=1 environment variable in production/dev
-    is_debug = os.environ.get("FLASK_DEBUG", "1") == "1"
+    # Use FLASK_DEBUG=1 to enable debug mode for local development (never in production)
+    is_debug = os.environ.get("FLASK_DEBUG", "0") == "1"
 
     print(f"Starting Flask app on {run_host}:{run_port} (Debug: {is_debug})")
     app.run(host=run_host, port=run_port, debug=is_debug)
-

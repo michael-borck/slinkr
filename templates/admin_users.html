@@ -77,6 +77,7 @@ block content %}
               class="inline-block"
               onsubmit="return confirm('Are you sure you want to toggle verification for {{ user.username }}?');"
             >
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
               <button
                 type="submit"
                 class="btn {{ 'btn-secondary' if user.is_verified else 'btn-primary' }} btn-sm"
@@ -93,6 +94,7 @@ block content %}
               class="inline-block"
               onsubmit="return confirm('Are you sure you want to DELETE user {{ user.username }}? This cannot be undone.');"
             >
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
               <button type="submit" class="btn btn-danger btn-sm">
                 <i class="fas fa-trash-alt mr-1"></i> Delete
               </button>

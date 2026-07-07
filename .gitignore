@@ -174,3 +174,17 @@ cython_debug/
 .pypirc
 
 _notes
+
+# Slinkr data & secrets (never commit)
+slinkr_data.json
+linky_data.json
+link_db.json
+uploads/
+.env
+
+# macOS resource forks
+._*
+.DS_Store
+slinkr.db
+slinkr.db-wal
+slinkr.db-shm
