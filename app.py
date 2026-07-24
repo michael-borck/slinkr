@@ -511,13 +511,30 @@ def redirect_to_long_url(short_code):
 
 # --- API Endpoints ---
 
+# Custom-alias support for /api/shorten.
+# An alias becomes the short_code directly: aliases and random codes share the links
+# table and its UNIQUE(short_code) constraint, which does all the clash enforcement.
+# Aliases are lowercased so "6018-CH1" and "6018-ch1" cannot diverge. Reserved names
+# are the app's own top-level routes; an alias there would be shadowed by the real page
+# and never resolve, so we refuse them up front.
+ALIAS_RE = re.compile(r'^[a-z0-9][a-z0-9_-]{1,63}$')
+RESERVED_ALIASES = {
+    'api', 'admin', 'auth', 'login', 'logout', 'about', 'static',
+    'favicon.ico', 'robots.txt',
+}
+
 @app.route('/api/shorten', methods=['POST'])
 @csrf.exempt # CSRF is enforced below for session clients; API-key clients are exempt
 @limiter.limit("5 per minute") # Limit shortening attempts per IP
 @verification_required # Requires login and verification (or admin), or the API key
 def api_shorten():
     """API endpoint to shorten a URL. Requires a verified account (session) or the
-    service API key. Browser clients must send the CSRF token in X-CSRFToken."""
+    service API key. Browser clients must send the CSRF token in X-CSRFToken.
+
+    Optional `alias` requests a custom short code (a slug) instead of a random one.
+    Clash rules: a free alias is created; an alias already pointing at the SAME url is
+    returned unchanged (idempotent); an alias pointing at a DIFFERENT url is refused
+    with 409 (we never repoint an existing link)."""
     csrf_error = enforce_csrf_unless_api_key()
     if csrf_error:
         return csrf_error
@@ -538,6 +555,28 @@ def api_shorten():
         return jsonify({"error": "Invalid URL format"}), 400
 
     db = get_db()
+
+    # Optional custom alias. If supplied, it IS the short code.
+    alias = (data.get('url_alias') or data.get('alias') or '').strip().lower()
+    if alias:
+        if alias in RESERVED_ALIASES or not ALIAS_RE.match(alias):
+            return jsonify({"error": "Invalid or reserved alias (use 2-64 chars: letters, digits, - or _)"}), 400
+        row = db.execute("SELECT long_url FROM links WHERE short_code = ?", (alias,)).fetchone()
+        if row is None:
+            try:
+                db.execute(
+                    "INSERT INTO links (short_code, long_url, user_id, created_at) VALUES (?, ?, ?, ?)",
+                    (alias, long_url, current_user.id, utcnow_iso())
+                )
+                db.commit()
+            except sqlite3.IntegrityError:
+                # Lost a race for this alias; re-read and fall through to the clash check.
+                row = db.execute("SELECT long_url FROM links WHERE short_code = ?", (alias,)).fetchone()
+        if row is not None and row['long_url'] != long_url:
+            return jsonify({"error": f"Alias '{alias}' is already in use for a different URL"}), 409
+        return jsonify({"short_url": f"{APP_BASE_URL}/{alias}", "alias": alias})
+
+    # No alias: idempotent by URL, random 7-char code.
     # Check if this exact URL already exists
     existing = db.execute("SELECT short_code FROM links WHERE long_url = ?", (long_url,)).fetchone()
     if existing:

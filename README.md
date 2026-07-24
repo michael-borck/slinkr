@@ -114,6 +114,26 @@ browser session works. Requests bodies are **JSON**.
   # Idempotent: the same long URL always returns the same short code.
   ```
 
+  **Custom alias (optional).** Add `"alias"` to request a memorable slug instead of a
+  random code. The alias becomes the short code itself.
+
+  ```bash
+  curl -X POST "$APP_BASE_URL/api/shorten" \
+    -H "Authorization: Bearer $SLINKR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"url":"https://example.com","alias":"my-link"}'
+  # → {"short_url":"https://.../my-link","alias":"my-link"}
+  ```
+
+  - Aliases are **lowercased** and must be 2–64 chars of letters, digits, `-` or `_`
+    (else `400`). Names that collide with the app's own routes (`api`, `admin`,
+    `login`, …) are reserved (`400`).
+  - **Clash handling.** A free alias is created. An alias already pointing at the
+    **same** URL is returned unchanged (idempotent, so build scripts can re-run
+    safely). An alias pointing at a **different** URL is refused with **`409`** — an
+    existing link is never silently repointed. Pick another alias, or omit `alias`
+    for a random code.
+
 * **Check a Link**
 
   ```bash
