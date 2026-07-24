@@ -21,7 +21,8 @@ from flask_login import (
     LoginManager, UserMixin, login_user, logout_user, login_required,
     current_user
 )
-from flask_wtf.csrf import CSRFProtect, CSRFError
+from flask_wtf.csrf import CSRFProtect, CSRFError, validate_csrf
+from wtforms import ValidationError
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -51,6 +52,15 @@ AUTO_VERIFY_DOMAINS = {
 LOGIN_CODE_TTL_MINUTES = 10
 LOGIN_CODE_RESEND_SECONDS = 60
 LOGIN_CODE_MAX_ATTEMPTS = 5
+
+# Headless API access (for build scripts / automation). Empty = disabled, so
+# existing session-based auth is the only path unless this is explicitly set.
+# When set, a request bearing this key (Authorization: Bearer <key> or the
+# X-API-Key header) is authenticated as the service user below.
+SLINKR_API_KEY = os.environ.get("SLINKR_API_KEY", "")
+# The user that API-key requests act as (short links are attributed to them).
+# An email or numeric id; defaults to the first admin when unset.
+SLINKR_API_USER = os.environ.get("SLINKR_API_USER", "")
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
 if not SECRET_KEY:
@@ -221,6 +231,69 @@ def load_user(user_id):
             return User(row)
     except ValueError: # Handle cases where user_id might not be an integer
         pass
+    return None
+
+
+def request_api_key():
+    """Return the API key presented on the current request, or ''.
+    Accepts either `Authorization: Bearer <key>` or the `X-API-Key` header."""
+    presented = request.headers.get("X-API-Key", "")
+    if not presented:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            presented = auth[len("Bearer "):]
+    return presented.strip()
+
+
+def request_has_valid_api_key():
+    """True when the request carries the configured service API key.
+    Always False when SLINKR_API_KEY is unset, so the feature is opt-in."""
+    if not SLINKR_API_KEY:
+        return False
+    presented = request_api_key()
+    return bool(presented) and hmac.compare_digest(presented, SLINKR_API_KEY)
+
+
+def service_user():
+    """The verified user that API-key requests act as. SLINKR_API_USER (email or
+    id) if set and found, otherwise the first admin. None if neither exists."""
+    db = get_db()
+    ident = SLINKR_API_USER.strip()
+    row = None
+    if ident:
+        if ident.isdigit():
+            row = db.execute("SELECT * FROM users WHERE id = ?", (int(ident),)).fetchone()
+        else:
+            row = db.execute("SELECT * FROM users WHERE lower(email) = ?", (ident.lower(),)).fetchone()
+    if row is None:
+        row = db.execute(
+            "SELECT * FROM users WHERE is_admin = 1 ORDER BY id LIMIT 1"
+        ).fetchone()
+    return User(row) if row else None
+
+
+@login_manager.request_loader
+def load_user_from_request(req):
+    """Stateless auth for headless clients (build scripts, automation).
+    Enabled only when SLINKR_API_KEY is set. A matching key authenticates as the
+    service user; a browser session (loaded via the cookie) still takes
+    precedence over this, so interactive use is unaffected."""
+    if request_has_valid_api_key():
+        return service_user()
+    return None
+
+
+def enforce_csrf_unless_api_key():
+    """CSRF-protect session/cookie clients, but not API-key clients (which send
+    no cookie, so CSRF does not apply). Call at the top of a state-changing API
+    view that has been marked @csrf.exempt. Returns a JSON error response to
+    return, or None when the request may proceed."""
+    if request_has_valid_api_key():
+        return None
+    try:
+        validate_csrf(request.headers.get("X-CSRFToken"))
+    except (ValidationError, CSRFError):
+        return jsonify({"error": "CSRF token missing or invalid"}), 400
     return None
 
 # --- Helper Functions ---
@@ -439,11 +512,15 @@ def redirect_to_long_url(short_code):
 # --- API Endpoints ---
 
 @app.route('/api/shorten', methods=['POST'])
+@csrf.exempt # CSRF is enforced below for session clients; API-key clients are exempt
 @limiter.limit("5 per minute") # Limit shortening attempts per IP
-@verification_required # Requires login and verification (or admin)
+@verification_required # Requires login and verification (or admin), or the API key
 def api_shorten():
-    """API endpoint to shorten a URL. Requires verified account.
-    Browser clients must send the CSRF token in the X-CSRFToken header."""
+    """API endpoint to shorten a URL. Requires a verified account (session) or the
+    service API key. Browser clients must send the CSRF token in X-CSRFToken."""
+    csrf_error = enforce_csrf_unless_api_key()
+    if csrf_error:
+        return csrf_error
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid request body"}), 400
@@ -579,11 +656,15 @@ def api_qr():
         return jsonify({"error": "Failed to generate QR code"}), 500
 
 @app.route('/api/check', methods=['POST'])
+@csrf.exempt # CSRF is enforced below for session clients; API-key clients are exempt
 @limiter.limit("10 per minute") # Stricter limit for external requests
-@verification_required # Requires login and verification (or admin)
+@verification_required # Requires login and verification (or admin), or the API key
 def api_check():
-    """API endpoint to check link status. Requires verified account.
-    Browser clients must send the CSRF token in the X-CSRFToken header."""
+    """API endpoint to check link status. Requires a verified account (session) or
+    the service API key. Browser clients must send the CSRF token in X-CSRFToken."""
+    csrf_error = enforce_csrf_unless_api_key()
+    if csrf_error:
+        return csrf_error
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid request body"}), 400

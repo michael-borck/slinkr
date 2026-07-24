@@ -86,28 +86,48 @@ First user to register becomes an **admin** and is auto-verified. Subsequent use
 
 ## 💻 Usage Examples
 
+### Headless API (build scripts / automation)
+
+`/api/shorten` and `/api/check` require a verified account. For scripts, set a
+service key so you can authenticate with a header instead of a browser session:
+
+```bash
+# In the deployment .env (next to docker-compose.prod.yml):
+SLINKR_API_KEY=$(openssl rand -hex 32)   # any strong secret
+# Optional: attribute created links to a specific user (email or id).
+# Defaults to the first admin when unset.
+SLINKR_API_USER=you@example.com
+```
+
+The key is sent as `Authorization: Bearer <key>` or `X-API-Key: <key>`. It is
+**opt-in**: with `SLINKR_API_KEY` unset the header is ignored and only the
+browser session works. Requests bodies are **JSON**.
+
 * **Shorten a URL**
 
   ```bash
   curl -X POST "$APP_BASE_URL/api/shorten" \
-    -H "Authorization: Bearer $TOKEN" \
-    -d "url=https://example.com"  
-  # → {"short_url":"http://.../Ab3XyZ"}
-  ```
-
-* **Generate a QR Code**
-
-  ```bash
-  curl "$APP_BASE_URL/api/qrcode?url=https://example.com" \
-    --output qr.png
+    -H "Authorization: Bearer $SLINKR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"url":"https://example.com"}'
+  # → {"short_url":"https://.../Ab3XyZ"}
+  # Idempotent: the same long URL always returns the same short code.
   ```
 
 * **Check a Link**
 
   ```bash
   curl -X POST "$APP_BASE_URL/api/check" \
-    -H "Authorization: Bearer $TOKEN" \
-    -d "url=https://example.com"
+    -H "X-API-Key: $SLINKR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"url":"https://example.com"}'
+  ```
+
+* **Generate a QR Code** (public, no key needed)
+
+  ```bash
+  curl "$APP_BASE_URL/api/qrcode?url=https://example.com" \
+    --output qr.png
   ```
 
 ---

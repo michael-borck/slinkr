@@ -21,6 +21,12 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-Slinkr <login@slinkr.link>}
       AUTO_VERIFY_DOMAINS: ${AUTO_VERIFY_DOMAINS:-curtin.edu.au}
+      # Headless API access for build scripts (empty = disabled). Set in .env:
+      #   SLINKR_API_KEY=$(openssl rand -hex 32)
+      # Short links created via the key are attributed to SLINKR_API_USER
+      # (email or id); defaults to the first admin when unset.
+      SLINKR_API_KEY: ${SLINKR_API_KEY:-}
+      SLINKR_API_USER: ${SLINKR_API_USER:-}
       # Optional: pre-create the admin (logs in by email code; no password)
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
