@@ -45,6 +45,8 @@
 
 ### Admin-Only
 - **User Management** – View, verify, or delete users via `/admin/users`.  
+- **Link Health Dashboard** – Monitor, check, and delete links via `/admin/links`.  
+- **Dead-Link Cleanup** – Automatic background sweeps purge links after repeated failed checks (audit-logged).  
 - **Rate Limiting Controls** – Fine-tune abuse protection.
 
 ---
@@ -148,6 +150,54 @@ browser session works. Requests bodies are **JSON**.
   ```bash
   curl "$APP_BASE_URL/api/qrcode?url=https://example.com" \
     --output qr.png
+  ```
+
+### Dead-link cleanup
+
+A background thread **inside the app** keeps the link table healthy — no cron
+or external maintenance script needed. Every `LINK_CHECK_INTERVAL_MINUTES`
+(default 60) one worker sweeps up to `LINK_CHECK_BATCH` (default 25) of the
+*stalest* links, skipping any checked within the last
+`LINK_CHECK_RECHECK_HOURS` (default 24). A link that fails
+`DEAD_LINK_THRESHOLD` (default 3) consecutive checks — necessarily spread ≥24h
+apart — is deleted, freeing its alias, with an audit record kept in the
+`purged_links` table (visible on `/admin/links`). Sites that merely block bots
+(401/403/429) are marked *inconclusive*, never dead. Set
+`LINK_CHECK_AUTOPURGE=0` to record failures without ever auto-deleting.
+
+The same machinery is exposed over the API (admin session or `SLINKR_API_KEY`):
+
+* **List links with health status**
+
+  ```bash
+  curl "$APP_BASE_URL/api/links" -H "X-API-Key: $SLINKR_API_KEY"
+  # ?dead=1 → only links at/over the threshold; ?mine=1 → only the service user's
+  ```
+
+* **Run a sweep batch now**
+
+  ```bash
+  curl -X POST "$APP_BASE_URL/api/links/check" \
+    -H "X-API-Key: $SLINKR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"limit": 50, "purge": true}'
+  # → {"checked":50,"alive":47,"dead":2,"blocked":1,"skipped":0,"purged":[...]}
+  ```
+
+* **Purge dead links** (`dry_run` previews without deleting)
+
+  ```bash
+  curl -X POST "$APP_BASE_URL/api/links/purge-dead" \
+    -H "X-API-Key: $SLINKR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"dry_run": true}'
+  ```
+
+* **Delete a single link** (owners can delete their own; admin/key can delete any)
+
+  ```bash
+  curl -X DELETE "$APP_BASE_URL/api/links/my-link" \
+    -H "X-API-Key: $SLINKR_API_KEY"
   ```
 
 ---

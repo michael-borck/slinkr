@@ -11,7 +11,10 @@ import socket
 import sqlite3
 import shortuuid
 import requests
+import threading
+import time
 import datetime # Needed for user creation timestamp
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import (
     Flask, request, jsonify, render_template, redirect, url_for,
@@ -62,6 +65,22 @@ SLINKR_API_KEY = os.environ.get("SLINKR_API_KEY", "")
 # An email or numeric id; defaults to the first admin when unset.
 SLINKR_API_USER = os.environ.get("SLINKR_API_USER", "")
 
+# Dead-link checking. A background thread inside the app sweeps stored links on
+# an interval — no external cron needed. Each sweep checks only links that
+# haven't been checked in LINK_CHECK_RECHECK_HOURS, oldest first, at most
+# LINK_CHECK_BATCH per run, so work per sweep stays bounded as the table grows.
+# A link is purged (with an audit record in purged_links) after
+# DEAD_LINK_THRESHOLD consecutive failed checks; since a link is only eligible
+# for rechecking every RECHECK_HOURS, failures accrue at most once per day by
+# default — i.e. "3 consecutive failures at least 24h apart".
+LINK_CHECK_ENABLED = os.environ.get("LINK_CHECK_ENABLED", "1") == "1"
+LINK_CHECK_INTERVAL_MINUTES = int(os.environ.get("LINK_CHECK_INTERVAL_MINUTES", 60))
+LINK_CHECK_RECHECK_HOURS = int(os.environ.get("LINK_CHECK_RECHECK_HOURS", 24))
+LINK_CHECK_BATCH = int(os.environ.get("LINK_CHECK_BATCH", 25))
+DEAD_LINK_THRESHOLD = int(os.environ.get("DEAD_LINK_THRESHOLD", 3))
+# Set to 0 to have sweeps only record failures, never delete (purge manually instead).
+LINK_CHECK_AUTOPURGE = os.environ.get("LINK_CHECK_AUTOPURGE", "1") == "1"
+
 SECRET_KEY = os.environ.get("SECRET_KEY")
 if not SECRET_KEY:
     # Fall back to an ephemeral random key: sessions won't survive a restart,
@@ -106,9 +125,27 @@ CREATE TABLE IF NOT EXISTS links (
     short_code TEXT UNIQUE NOT NULL,
     long_url TEXT NOT NULL,
     user_id INTEGER,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    last_checked_at TEXT,
+    last_status TEXT,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_links_long_url ON links(long_url);
+-- Audit trail for links removed by the dead-link cleanup (or an admin purge).
+CREATE TABLE IF NOT EXISTS purged_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    short_code TEXT NOT NULL,
+    long_url TEXT NOT NULL,
+    user_id INTEGER,
+    created_at TEXT,
+    purged_at TEXT NOT NULL,
+    reason TEXT NOT NULL
+);
+-- Small key/value store; used as a cross-worker lease for the sweep thread.
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS login_codes (
     email TEXT PRIMARY KEY,
     code_hash TEXT NOT NULL,
@@ -177,6 +214,13 @@ def init_db():
     conn = _connect()
     conn.execute("PRAGMA journal_mode = WAL") # Safe concurrent reads + single-writer across processes
     conn.executescript(SCHEMA)
+    # Add link-health columns to databases created before dead-link checking existed
+    existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(links)")}
+    for col, ddl in (("last_checked_at", "TEXT"), ("last_status", "TEXT"),
+                     ("consecutive_failures", "INTEGER NOT NULL DEFAULT 0")):
+        if col not in existing_cols:
+            conn.execute(f"ALTER TABLE links ADD COLUMN {col} {ddl}")
+    conn.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('last_sweep_at', '1970-01-01T00:00:00+00:00')")
     migrate_from_tinydb(conn)
     conn.commit()
     conn.close()
@@ -448,6 +492,193 @@ def generate_qr_code_base64(url, logo_path=None, error_correction=qrcode.constan
     except Exception as e:
         print(f"Error generating QR code: {e}")
         return None
+
+# --- Link Health Checking ---
+
+CHECKER_HEADERS = {'User-Agent': 'SlinkrLinkChecker/1.0 (+https://slinkr.link/about)'}
+# Statuses that usually mean "the site blocks automated checkers", not "the
+# page is gone" — recorded but never counted toward the dead threshold, so a
+# Cloudflare-fronted site that 403s bots can't get auto-purged.
+BLOCKED_STATUSES = {401, 403, 406, 429}
+
+def check_url_status(url, timeout=10):
+    """Fetches a URL (HEAD, falling back to GET) and classifies the outcome.
+    Returns a dict with:
+      state  — 'alive' (2xx/3xx), 'blocked' (bot-hostile status or odd error),
+               'dead' (4xx/5xx, timeout, DNS/connection/SSL failure)
+      kind   — 'http', 'timeout', 'ssl', 'conn' or 'other' (which except branch)
+      plus status_code/status_text/status_indicator/final_url or error."""
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=timeout, headers=CHECKER_HEADERS)
+        # If HEAD is disallowed (405 Method Not Allowed), try GET
+        if response.status_code == 405:
+            response = requests.get(url, allow_redirects=True, timeout=timeout, stream=True, headers=CHECKER_HEADERS) # stream=True avoids downloading large files immediately
+        status_code = response.status_code
+        status_text = response.reason
+        final_url = response.url # Final URL after any redirects
+        # Close response body if using stream=True with GET to release connection
+        if response.request.method == 'GET' and hasattr(response, 'close'):
+            response.close()
+
+        if 200 <= status_code < 300: status_indicator = "✅" # Success
+        elif 300 <= status_code < 400: status_indicator = "➡️" # Redirect
+        elif 400 <= status_code < 500: status_indicator = "❌" # Client Error
+        elif 500 <= status_code < 600: status_indicator = "⚠️" # Server Error
+        else: status_indicator = "❓" # Unknown status
+
+        if status_code < 400:
+            state = 'alive'
+        elif status_code in BLOCKED_STATUSES:
+            state = 'blocked'
+        else:
+            state = 'dead'
+        return {"state": state, "kind": "http", "status_code": status_code,
+                "status_text": status_text, "status_indicator": status_indicator,
+                "final_url": final_url}
+    except requests.exceptions.Timeout:
+        return {"state": "dead", "kind": "timeout", "error": "Request timed out", "status_indicator": "⏱️"}
+    except requests.exceptions.SSLError:
+        return {"state": "dead", "kind": "ssl", "error": "SSL certificate verification failed", "status_indicator": "🔒❌"}
+    except requests.exceptions.ConnectionError:
+        # This can include DNS resolution errors, refused connections, etc.
+        return {"state": "dead", "kind": "conn", "error": "Could not connect to the server or resolve host", "status_indicator": "🔌"}
+    except requests.exceptions.RequestException as e:
+        print(f"Link check error for {url}: {e}")
+        # Avoid leaking potentially sensitive error details from the requests library
+        error_message = "An unexpected error occurred during the request."
+        if "invalid URL" in str(e).lower() or "Name or service not known" in str(e):
+            error_message = "Invalid URL format or host could not be resolved."
+        # Unclassified library errors don't count toward the dead threshold
+        return {"state": "blocked", "kind": "other", "error": error_message, "status_indicator": "❓"}
+
+
+def _classify_stored_link(long_url):
+    """Sweep-side wrapper around check_url_status for a URL as stored in the
+    links table: normalizes a missing scheme and pre-screens URLs the checker
+    must not or cannot fetch."""
+    url = long_url
+    if not urlparse(url).scheme:
+        url = "http://" + url
+    if not is_valid_url(url):
+        # A stored URL that can't even parse will never work
+        return {"state": "dead", "kind": "invalid", "error": "invalid URL"}
+    if not is_public_url(url):
+        # Private/internal host: unreachable from here (SSRF guard), but may
+        # work for users on that network — never counted as dead.
+        return {"state": "skipped", "kind": "private", "error": "private host (not checked)"}
+    return check_url_status(url, timeout=6)
+
+
+def _result_status_string(result):
+    """Human-readable one-liner stored in links.last_status."""
+    if result.get("kind") == "http":
+        return f"{result['status_code']} {result.get('status_text') or ''}".strip()
+    return result.get("error", "unknown")
+
+
+def purge_dead_links(conn, dry_run=False, reason_prefix="auto"):
+    """Moves links at/over the failure threshold into purged_links and deletes
+    them. Returns the list of purged (or would-be purged) links as dicts."""
+    rows = conn.execute(
+        "SELECT * FROM links WHERE consecutive_failures >= ?", (DEAD_LINK_THRESHOLD,)
+    ).fetchall()
+    purged = [{"short_code": r["short_code"], "long_url": r["long_url"],
+               "user_id": r["user_id"], "failures": r["consecutive_failures"],
+               "last_status": r["last_status"]} for r in rows]
+    if dry_run or not rows:
+        return purged
+    now = utcnow_iso()
+    for r in rows:
+        conn.execute(
+            "INSERT INTO purged_links (short_code, long_url, user_id, created_at, purged_at, reason)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (r["short_code"], r["long_url"], r["user_id"], r["created_at"], now,
+             f"{reason_prefix}: {r['consecutive_failures']} consecutive failed checks (last: {r['last_status']})")
+        )
+        conn.execute("DELETE FROM links WHERE id = ?", (r["id"],))
+    conn.commit()
+    for p in purged:
+        print(f"Purged dead link /{p['short_code']} -> {p['long_url']} ({p['last_status']})")
+    return purged
+
+
+def run_link_sweep(conn, limit=None, do_purge=None):
+    """Checks a batch of stored links (stalest first, only those unchecked for
+    LINK_CHECK_RECHECK_HOURS) and updates their health columns. Alive resets
+    the failure count; dead increments it; blocked/skipped leave it unchanged.
+    Then optionally purges links at the threshold. Returns a summary dict."""
+    limit = limit or LINK_CHECK_BATCH
+    do_purge = LINK_CHECK_AUTOPURGE if do_purge is None else do_purge
+    cutoff = (datetime.datetime.now(datetime.timezone.utc)
+              - datetime.timedelta(hours=LINK_CHECK_RECHECK_HOURS)).isoformat()
+    rows = conn.execute(
+        "SELECT id, short_code, long_url, consecutive_failures FROM links"
+        " WHERE last_checked_at IS NULL OR last_checked_at <= ?"
+        " ORDER BY last_checked_at IS NOT NULL, last_checked_at LIMIT ?",
+        (cutoff, limit)
+    ).fetchall()
+
+    summary = {"checked": len(rows), "alive": 0, "dead": 0, "blocked": 0, "skipped": 0, "purged": []}
+    if rows:
+        # Network I/O in parallel; all DB writes stay on this thread's connection
+        with ThreadPoolExecutor(max_workers=min(8, len(rows))) as pool:
+            results = list(pool.map(lambda r: _classify_stored_link(r["long_url"]), rows))
+        now = utcnow_iso()
+        for row, result in zip(rows, results):
+            state = result["state"]
+            summary[state] += 1
+            if state == 'alive':
+                failures = 0
+            elif state == 'dead':
+                failures = row["consecutive_failures"] + 1
+            else: # blocked / skipped — inconclusive, don't move the count
+                failures = row["consecutive_failures"]
+            conn.execute(
+                "UPDATE links SET last_checked_at = ?, last_status = ?, consecutive_failures = ? WHERE id = ?",
+                (now, _result_status_string(result), failures, row["id"])
+            )
+        conn.commit()
+
+    if do_purge:
+        summary["purged"] = purge_dead_links(conn, reason_prefix="auto")
+    return summary
+
+
+def _link_check_worker():
+    """Background sweep loop. Runs in every gunicorn worker, but a lease row in
+    the meta table ensures only one worker actually sweeps per interval."""
+    interval = datetime.timedelta(minutes=LINK_CHECK_INTERVAL_MINUTES)
+    while True:
+        time.sleep(60)
+        try:
+            conn = _connect()
+            try:
+                now = datetime.datetime.now(datetime.timezone.utc)
+                stale = (now - interval).isoformat()
+                # Atomic lease: only one worker's UPDATE matches the old value
+                cur = conn.execute(
+                    "UPDATE meta SET value = ? WHERE key = 'last_sweep_at' AND value <= ?",
+                    (now.isoformat(), stale)
+                )
+                conn.commit()
+                if cur.rowcount == 1:
+                    summary = run_link_sweep(conn)
+                    if summary["checked"] or summary["purged"]:
+                        print(f"Link sweep: {summary['checked']} checked, {summary['alive']} alive, "
+                              f"{summary['dead']} failing, {summary['blocked']} blocked/inconclusive, "
+                              f"{len(summary['purged'])} purged.")
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"Link check worker error (will retry next cycle): {e}")
+
+
+def start_link_check_worker():
+    if not LINK_CHECK_ENABLED:
+        print("Dead-link checking disabled (LINK_CHECK_ENABLED=0).")
+        return
+    threading.Thread(target=_link_check_worker, daemon=True, name="link-check").start()
+
 
 # --- Decorators ---
 def admin_required(f):
@@ -726,57 +957,115 @@ def api_check():
     if not is_public_url(url_to_check):
         return jsonify({"error": "URL host is not publicly reachable", "status_indicator": "🚫"}), 400
 
-    # Perform the HTTP request to check the URL status
-    try:
-        headers = {'User-Agent': 'SlinkrLinkChecker/1.0 (+https://your-app-url.com/about)'} # Identify the checker
-        # Use HEAD request first for efficiency (doesn't download body)
-        # Set timeout, allow redirects
-        response = requests.head(url_to_check, allow_redirects=True, timeout=10, headers=headers)
-
-        # If HEAD is disallowed (405 Method Not Allowed), try GET
-        if response.status_code == 405:
-             response = requests.get(url_to_check, allow_redirects=True, timeout=10, stream=True, headers=headers) # stream=True avoids downloading large files immediately
-
-        status_code = response.status_code
-        status_text = response.reason
-        final_url = response.url # Get the final URL after any redirects
-
-        # Close response body if using stream=True with GET to release connection
-        if response.request.method == 'GET' and hasattr(response, 'close'):
-            response.close()
-
-        # Determine status indicator based on status code range
-        if 200 <= status_code < 300: status_indicator = "✅" # Success
-        elif 300 <= status_code < 400: status_indicator = "➡️" # Redirect
-        elif 400 <= status_code < 500: status_indicator = "❌" # Client Error
-        elif 500 <= status_code < 600: status_indicator = "⚠️" # Server Error
-        else: status_indicator = "❓" # Unknown status
-
+    # Perform the HTTP request to check the URL status (shared with the sweep)
+    result = check_url_status(url_to_check)
+    if result["kind"] == "http":
         return jsonify({
-            "status_code": status_code,
-            "status_text": status_text,
-            "status_indicator": status_indicator,
-            "final_url": final_url
+            "status_code": result["status_code"],
+            "status_text": result["status_text"],
+            "status_indicator": result["status_indicator"],
+            "final_url": result["final_url"]
         })
+    error_http_status = {"timeout": 408, "ssl": 500, "conn": 503, "other": 500}[result["kind"]]
+    return jsonify({"error": result["error"], "status_indicator": result["status_indicator"]}), error_http_status
 
-    # Handle specific request exceptions
-    except requests.exceptions.Timeout:
-        return jsonify({"error": "Request timed out", "status_indicator": "⏱️"}), 408 # Request Timeout status
-    except requests.exceptions.SSLError:
-         return jsonify({"error": "SSL certificate verification failed", "status_indicator": "🔒❌"}), 500 # Use 500 or a custom code
-    except requests.exceptions.ConnectionError:
-        # This can include DNS resolution errors, refused connections, etc.
-        return jsonify({"error": "Could not connect to the server or resolve host", "status_indicator": "🔌"}), 503 # Service Unavailable
-    except requests.exceptions.RequestException as e:
-        # Catch other general request errors
-        print(f"Link check error for {url_to_check}: {e}")
-        # Avoid leaking potentially sensitive error details from the requests library
-        error_message = "An unexpected error occurred during the request."
-        # Provide more specific feedback for common issues if possible
-        if "invalid URL" in str(e).lower() or "Name or service not known" in str(e):
-             error_message = "Invalid URL format or host could not be resolved."
 
-        return jsonify({"error": error_message, "status_indicator": "❓"}), 500 # Internal Server Error
+# --- Link Management API ---
+# Maintenance endpoints (sweep/purge) require operator-level trust: either the
+# service API key itself, or a logged-in admin. Note this is stricter than
+# "the service user is verified" — the key counts even if SLINKR_API_USER
+# points at a non-admin account.
+
+def request_is_operator():
+    return request_has_valid_api_key() or (current_user.is_authenticated and current_user.is_admin)
+
+
+@app.route('/api/links', methods=['GET'])
+@limiter.limit("30 per minute")
+def api_links():
+    """Lists links with their health status. Admins and API-key clients see all
+    links (pass ?mine=1 to restrict); other users see only their own."""
+    if not current_user.is_authenticated:
+        return jsonify({"error": "Login required"}), 401
+    db = get_db()
+    query = ("SELECT l.*, u.username FROM links l LEFT JOIN users u ON u.id = l.user_id")
+    params = []
+    if not request_is_operator() or request.args.get('mine') == '1':
+        query += " WHERE l.user_id = ?"
+        params.append(current_user.id)
+    if request.args.get('dead') == '1':
+        query += (" AND" if params else " WHERE") + " l.consecutive_failures >= ?"
+        params.append(DEAD_LINK_THRESHOLD)
+    query += " ORDER BY l.created_at DESC"
+    rows = db.execute(query, params).fetchall()
+    return jsonify({"count": len(rows), "dead_threshold": DEAD_LINK_THRESHOLD, "links": [{
+        "short_code": r["short_code"], "short_url": f"{APP_BASE_URL}/{r['short_code']}",
+        "long_url": r["long_url"], "username": r["username"], "created_at": r["created_at"],
+        "last_checked_at": r["last_checked_at"], "last_status": r["last_status"],
+        "consecutive_failures": r["consecutive_failures"],
+        "is_dead": r["consecutive_failures"] >= DEAD_LINK_THRESHOLD,
+    } for r in rows]})
+
+
+@app.route('/api/links/check', methods=['POST'])
+@csrf.exempt # CSRF is enforced below for session clients; API-key clients are exempt
+@limiter.limit("10 per hour") # Each run triggers outbound requests — keep it modest
+def api_links_check():
+    """Runs a sweep batch on demand (same logic as the background sweep): checks
+    up to `limit` links not checked within the recheck window and,
+    unless `purge` is false, removes links at the failure threshold.
+    Operator only (admin session or service API key)."""
+    if not request_is_operator():
+        return jsonify({"error": "Admin or API key required"}), 403
+    csrf_error = enforce_csrf_unless_api_key()
+    if csrf_error:
+        return csrf_error
+    data = request.get_json(silent=True) or {}
+    limit = min(int(data.get('limit', LINK_CHECK_BATCH)), 100)
+    do_purge = bool(data.get('purge', LINK_CHECK_AUTOPURGE))
+    summary = run_link_sweep(get_db(), limit=limit, do_purge=do_purge)
+    return jsonify(summary)
+
+
+@app.route('/api/links/purge-dead', methods=['POST'])
+@csrf.exempt # CSRF is enforced below for session clients; API-key clients are exempt
+@limiter.limit("10 per hour")
+def api_links_purge_dead():
+    """Deletes links with consecutive_failures >= DEAD_LINK_THRESHOLD, recording
+    each in purged_links. Pass {"dry_run": true} to preview without deleting.
+    Operator only (admin session or service API key)."""
+    if not request_is_operator():
+        return jsonify({"error": "Admin or API key required"}), 403
+    csrf_error = enforce_csrf_unless_api_key()
+    if csrf_error:
+        return csrf_error
+    data = request.get_json(silent=True) or {}
+    dry_run = bool(data.get('dry_run', False))
+    purged = purge_dead_links(get_db(), dry_run=dry_run, reason_prefix="manual")
+    return jsonify({"dry_run": dry_run, "count": len(purged), "purged": purged})
+
+
+@app.route('/api/links/<short_code>', methods=['DELETE'])
+@csrf.exempt # CSRF is enforced below for session clients; API-key clients are exempt
+@limiter.limit("20 per minute")
+def api_links_delete(short_code):
+    """Deletes a single link. Owners can delete their own links; admins and
+    API-key clients can delete any."""
+    if not current_user.is_authenticated:
+        return jsonify({"error": "Login required"}), 401
+    csrf_error = enforce_csrf_unless_api_key()
+    if csrf_error:
+        return csrf_error
+    db = get_db()
+    row = db.execute("SELECT * FROM links WHERE short_code = ?", (short_code,)).fetchone()
+    if not row:
+        return jsonify({"error": "Short code not found"}), 404
+    is_owner = row["user_id"] is not None and row["user_id"] == current_user.id
+    if not (is_owner or request_is_operator()):
+        return jsonify({"error": "You can only delete your own links"}), 403
+    db.execute("DELETE FROM links WHERE id = ?", (row["id"],))
+    db.commit()
+    return jsonify({"ok": True, "deleted": short_code, "long_url": row["long_url"]})
 
 
 # --- Authentication Routes ---
@@ -942,6 +1231,63 @@ def admin_delete_user(user_id):
     flash(f'User {username} and their associated links have been deleted.', 'success')
     return redirect(url_for('admin_users'))
 
+@app.route('/admin/links')
+@admin_required
+def admin_links():
+    """Link health dashboard: every link with its last-check status, plus the
+    recent purge audit trail."""
+    db = get_db()
+    links = [dict(r) for r in db.execute(
+        "SELECT l.*, u.username FROM links l LEFT JOIN users u ON u.id = l.user_id"
+        " ORDER BY l.consecutive_failures DESC, l.created_at DESC"
+    ).fetchall()]
+    purged = [dict(r) for r in db.execute(
+        "SELECT * FROM purged_links ORDER BY purged_at DESC LIMIT 20"
+    ).fetchall()]
+    return render_template('admin_links.html', links=links, purged=purged,
+                           threshold=DEAD_LINK_THRESHOLD,
+                           recheck_hours=LINK_CHECK_RECHECK_HOURS,
+                           autopurge=LINK_CHECK_AUTOPURGE and LINK_CHECK_ENABLED)
+
+@app.route('/admin/links/check', methods=['POST'])
+@admin_required
+def admin_links_check():
+    """Admin button: run a sweep batch now."""
+    summary = run_link_sweep(get_db())
+    msg = (f"Checked {summary['checked']} link(s): {summary['alive']} alive, "
+           f"{summary['dead']} failing, {summary['blocked'] + summary['skipped']} inconclusive.")
+    if summary["purged"]:
+        msg += f" Purged {len(summary['purged'])} dead link(s)."
+    if summary["checked"] == 0:
+        msg = "No links due for a check (all checked within the recheck window)."
+    flash(msg, 'info')
+    return redirect(url_for('admin_links'))
+
+@app.route('/admin/links/purge', methods=['POST'])
+@admin_required
+def admin_links_purge():
+    """Admin button: purge links at/over the failure threshold."""
+    purged = purge_dead_links(get_db(), reason_prefix="manual")
+    if purged:
+        flash(f"Purged {len(purged)} dead link(s): " + ", ".join('/' + p['short_code'] for p in purged), 'success')
+    else:
+        flash("No links have reached the dead threshold.", 'info')
+    return redirect(url_for('admin_links'))
+
+@app.route('/admin/links/delete/<int:link_id>', methods=['POST'])
+@admin_required
+def admin_delete_link(link_id):
+    """Admin action to delete a single link."""
+    db = get_db()
+    row = db.execute("SELECT * FROM links WHERE id = ?", (link_id,)).fetchone()
+    if not row:
+        flash('Link not found.', 'danger')
+    else:
+        db.execute("DELETE FROM links WHERE id = ?", (link_id,))
+        db.commit()
+        flash(f"Link /{row['short_code']} deleted.", 'success')
+    return redirect(url_for('admin_links'))
+
 # --- Optional: About Page ---
 @app.route('/about')
 def about():
@@ -1024,6 +1370,7 @@ def bootstrap_admin_from_env():
         conn.close()
 
 bootstrap_admin_from_env()
+start_link_check_worker()
 
 # --- Run the App ---
 if __name__ == '__main__':

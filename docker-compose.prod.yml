@@ -30,6 +30,13 @@ services:
       # Optional: pre-create the admin (logs in by email code; no password)
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      # Dead-link cleanup (background sweep inside the app; see .env.example)
+      LINK_CHECK_ENABLED: ${LINK_CHECK_ENABLED:-1}
+      LINK_CHECK_INTERVAL_MINUTES: ${LINK_CHECK_INTERVAL_MINUTES:-60}
+      LINK_CHECK_RECHECK_HOURS: ${LINK_CHECK_RECHECK_HOURS:-24}
+      LINK_CHECK_BATCH: ${LINK_CHECK_BATCH:-25}
+      DEAD_LINK_THRESHOLD: ${DEAD_LINK_THRESHOLD:-3}
+      LINK_CHECK_AUTOPURGE: ${LINK_CHECK_AUTOPURGE:-1}
       TRUST_PROXY: ${TRUST_PROXY:-1}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-1}
       RATELIMIT_STORAGE_URI: redis://redis:6379/0
